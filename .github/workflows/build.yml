@@ -42,7 +42,11 @@ jobs:
       - name: Derle ve paketle
         run: npm run dist:${{ matrix.target }}
         env:
-          # İmzasız derleme (kod imzası eklemek isterseniz sertifika secret'ları ekleyin)
+          # Apple Developer sertifikası yok → gerçek imza/notarizasyon atlanır.
+          # macOS'ta build.afterSign (scripts/afterSignMac.cjs) uygulamayı ücretsiz
+          # ad-hoc imzalar; bu olmadan arm64 (M1/M2/...) Mac'ler uygulamayı
+          # "hasar görmüş" diyerek reddediyor. Gerçek sertifika eklemek isterseniz
+          # bu secret'ı kaldırıp CSC_LINK/CSC_KEY_PASSWORD secret'larını ekleyin.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Artifact yükle

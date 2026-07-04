@@ -44,6 +44,21 @@ Bu depo GitHub'a push'landığında hazır CI ile her iki platform da derlenir:
    (veya Actions sekmesinden **Masaüstü Derlemeleri** iş akışını elle çalıştırın)
 3. Actions çıktısından `caya-pcb-studio-mac` (.dmg) ve `caya-pcb-studio-win` (.exe) artifact'lerini indirin
 
+### macOS'ta "dosya hasar görmüş" uyarısı
+
+CaYa PCB Studio bir Apple Developer sertifikasıyla imzalanmadığı için (ücretsiz/bağımsız dağıtım),
+özellikle Apple Silicon (M1/M2/...) Mac'lerde macOS ilk açılışta **"CaYa PCB Studio hasar görmüş
+görünüyor, çöpe taşınmalı"** uyarısı verebilir. Uygulama bozuk değildir — Gatekeeper'ın imzasız/
+notarize edilmemiş uygulamalara verdiği standart bir uyarıdır. Çözmek için Terminal'de:
+
+```bash
+xattr -cr "/Applications/CaYa PCB Studio.app"
+```
+
+çalıştırıp uygulamayı tekrar açmanız yeterli. (v1.0.0 sonrası derlemeler ad-hoc imzalı geldiği için
+bu uyarı yerine daha az sorunlu "bilinmeyen geliştirici" uyarısı çıkabilir; bu durumda sağ tık →
+**Aç**'a basmak yeterlidir.)
+
 ### Web dağıtımı
 
 ```bash
