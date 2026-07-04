@@ -12,9 +12,9 @@
     "preview": "vite preview",
     "electron": "electron .",
     "start": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
-    "dist": "vite build && electron-builder",
-    "dist:win": "vite build && electron-builder --win",
-    "dist:mac": "vite build && electron-builder --mac"
+    "dist": "vite build && electron-builder --publish never",
+    "dist:win": "vite build && electron-builder --win --publish never",
+    "dist:mac": "vite build && electron-builder --mac --publish never"
   },
   "dependencies": {
     "react": "^18.3.1",
