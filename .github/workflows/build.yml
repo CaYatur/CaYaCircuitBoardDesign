@@ -1,0 +1,52 @@
+# CaYa PCB Studio — macOS + Windows masaüstü derlemeleri
+# Windows'ta macOS derlemesi yapılamadığı için GitHub'ın macOS koşucusu
+# kullanılır. Tetikleme: v* etiketi push'lanınca veya elle (workflow_dispatch).
+#
+# Kullanım:
+#   git tag v1.0.0 && git push origin v1.0.0
+#   → Actions sekmesinden .dmg (macOS) ve .exe (Windows) artifact'leri indirilir.
+
+name: Masaüstü Derlemeleri
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+            artifact: '*.dmg'
+          - os: windows-latest
+            target: win
+            artifact: '*.exe'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Bağımlılıkları kur
+        run: npm ci
+
+      - name: Tip denetimi
+        run: npx tsc --noEmit
+
+      - name: Derle ve paketle
+        run: npm run dist:${{ matrix.target }}
+        env:
+          # İmzasız derleme (kod imzası eklemek isterseniz sertifika secret'ları ekleyin)
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Artifact yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: caya-pcb-studio-${{ matrix.target }}
+          path: release/${{ matrix.artifact }}

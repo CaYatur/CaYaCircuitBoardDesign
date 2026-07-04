@@ -1,0 +1,1959 @@
+/* ─── CaYa PCB Studio — koyu tema ───────────────────────────────────────── */
+
+:root {
+  --bg: #14171c;
+  --bg-panel: #1b1f26;
+  --bg-panel2: #21262f;
+  --bg-input: #12151a;
+  --border: #2e3542;
+  --text: #d7dce4;
+  --text-dim: #8b93a3;
+  --accent: #3fd3dc;
+  --accent-dim: #2a8f96;
+  --primary: #3178c6;
+  --danger: #ff3860;
+  --warn: #ffb347;
+  --ok: #7ee787;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  user-select: none;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ─── Araç çubuğu ─── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.toolbar-brand {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+  margin-right: 6px;
+}
+
+.brand-name {
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+
+.brand-sub {
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  padding: 0 6px;
+  border-left: 1px solid var(--border);
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.toolbar button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar button:hover:not(:disabled) {
+  background: var(--bg-panel2);
+  border-color: var(--border);
+}
+
+.toolbar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.toolbar button.active {
+  background: var(--accent-dim);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.toolbar button.btn-accent {
+  background: var(--primary);
+  color: #fff;
+}
+
+.toolbar button.btn-accent:hover {
+  background: #3d8ade;
+}
+
+.tools .tool-icon {
+  font-size: 14px;
+}
+
+.tools .tool-label {
+  font-size: 11px;
+}
+
+.layer-select {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+select,
+input {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 7px;
+  font-size: 12px;
+  font-family: inherit;
+  min-height: 28px;
+}
+
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  padding-right: 24px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'><path d='M1 1l4 4 4-4' fill='none' stroke='%238b93a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  text-overflow: ellipsis;
+}
+
+select:hover {
+  border-color: #3d4655;
+}
+
+select:focus,
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(63, 211, 220, 0.15);
+}
+
+select option {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+/* ─── Kenar paneller ─── */
+.sidebar-left {
+  width: 250px;
+  min-width: 250px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar-right {
+  width: 240px;
+  min-width: 240px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.panel {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* ─── Kütüphane ─── */
+.library-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.library-search {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.library-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.library-category {
+  margin-bottom: 2px;
+}
+
+.category-header {
+  width: 100%;
+  text-align: left;
+  background: var(--bg-panel2);
+  color: var(--text);
+  border: none;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.category-header:hover {
+  background: #2a303b;
+}
+
+.category-header-row {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  margin-bottom: 2px;
+}
+
+.category-header-row .category-header {
+  flex: 1;
+  margin: 0;
+}
+
+.category-del {
+  background: var(--bg-panel2);
+  border: none;
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 0 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.category-del:hover {
+  background: rgba(255, 56, 96, 0.18);
+  color: #ff8098;
+}
+
+.btn-danger-outline {
+  color: #ff8098 !important;
+  border-color: rgba(255, 56, 96, 0.4) !important;
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: rgba(255, 56, 96, 0.16) !important;
+}
+
+.category-count {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.library-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  padding: 5px 8px 5px 18px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.library-item:hover {
+  background: var(--bg-panel2);
+}
+
+.library-item.placing {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.context-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 151;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.context-menu button {
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.context-menu button:hover {
+  background: var(--bg-panel2);
+}
+
+.context-menu-title {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.item-name {
+  font-size: 12px;
+}
+
+.item-desc {
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 210px;
+}
+
+.library-actions {
+  display: flex;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.library-actions button {
+  flex: 1;
+  background: var(--bg-panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.library-actions button:hover {
+  border-color: var(--accent);
+}
+
+/* ─── Katman paneli ─── */
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.layer-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.layer-row label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.layer-active-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 1px 5px;
+}
+
+.layer-active-btn.on {
+  background: var(--accent-dim);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ─── Özellikler ─── */
+.props-panel {
+  flex: 1;
+}
+
+.props-empty {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.props-group {
+  margin-bottom: 12px;
+}
+
+.props-group h4 {
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.props-group h5 {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.field label {
+  width: 40%;
+  min-width: 80px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.field input,
+.field select {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.field-unit {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.field-unit span {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.field-row {
+  display: flex;
+  gap: 6px;
+}
+
+.field-row .field {
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.field-row .field label {
+  width: auto;
+}
+
+.trace-analysis {
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.trace-analysis b {
+  color: var(--ok);
+}
+
+.pad-nets {
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.pad-nets > label {
+  color: var(--text-dim);
+}
+
+.pad-net-row {
+  padding: 1px 0 1px 8px;
+}
+
+.pad-net-row b {
+  color: var(--warn);
+}
+
+.props-info {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ─── Canvas ─── */
+.editor-area {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.canvas-container canvas {
+  cursor: crosshair;
+}
+
+.cursor-readout {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  background: rgba(20, 23, 28, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  display: flex;
+  gap: 14px;
+  pointer-events: none;
+}
+
+.cursor-readout .warn {
+  color: var(--warn);
+}
+
+.cursor-readout .ok {
+  color: var(--ok);
+}
+
+.cursor-readout .err {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* ─── Durum çubuğu ─── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  gap: 10px;
+}
+
+.status-msg {
+  flex: 1;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-right {
+  display: flex;
+  gap: 6px;
+}
+
+.status-chip {
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.status-chip.layer-top {
+  color: #ff8a7a;
+}
+
+.status-chip.layer-bottom {
+  color: #8ab2ff;
+}
+
+/* ─── Modallar ─── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  user-select: text;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.modal-header h3 {
+  font-size: 15px;
+}
+
+.modal-header button {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.modal-header button:hover {
+  color: var(--danger);
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #3d8ade;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn-secondary {
+  background: var(--bg-panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.prompt-modal {
+  width: 380px;
+}
+
+.prompt-modal h3 {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.prompt-modal input {
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+}
+
+.confirm-message {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.btn-danger {
+  background: var(--danger) !important;
+  border-color: var(--danger) !important;
+  color: #fff !important;
+}
+
+.btn-danger:hover {
+  background: #e02a52 !important;
+}
+
+/* ─── Sekmeler ─── */
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.tabs button {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tabs button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tabs button:hover {
+  color: var(--text);
+}
+
+/* ─── Hesaplayıcılar ─── */
+.calc-modal {
+  width: 520px;
+}
+
+.calc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calc-result {
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 2;
+}
+
+.calc-result b {
+  color: var(--ok);
+  font-size: 14px;
+}
+
+.calc-note {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+
+/* ─── Dışa aktarma ─── */
+.export-modal {
+  width: 640px;
+}
+
+.export-body p {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.export-body h4 {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 10px 0 6px;
+}
+
+.export-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.export-buttons button {
+  background: var(--bg-panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.export-buttons button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.export-buttons button:disabled {
+  opacity: 0.4;
+}
+
+.export-buttons .btn-primary {
+  border: none;
+}
+
+.export-options {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.export-options label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.gcode-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+}
+
+/* ─── DRC paneli ─── */
+.drc-panel {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 440px;
+  max-height: 60%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+}
+
+.drc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.drc-header h3 {
+  font-size: 13px;
+}
+
+.drc-header .err {
+  color: var(--danger);
+}
+
+.drc-header .warn {
+  color: var(--warn);
+}
+
+.drc-header button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  margin-left: 5px;
+  font-size: 11px;
+}
+
+.drc-list {
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.drc-clean {
+  color: var(--ok);
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.drc-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text);
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.drc-item:hover {
+  background: var(--bg-panel2);
+}
+
+.drc-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.drc-item.error .drc-badge {
+  background: var(--danger);
+  color: #fff;
+}
+
+.drc-item.warning .drc-badge {
+  background: var(--warn);
+  color: #000;
+}
+
+.drc-msg {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.drc-pos {
+  color: var(--text-dim);
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+/* ─── Footprint editörü ─── */
+.footprint-modal {
+  width: 940px;
+}
+
+.footprint-layout {
+  display: flex;
+  gap: 16px;
+}
+
+.footprint-form {
+  flex: 1;
+  min-width: 0;
+}
+
+.footprint-side {
+  width: 350px;
+  flex-shrink: 0;
+}
+
+.footprint-preview {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.generator-box {
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.generator-box h4 {
+  font-size: 12px;
+  margin-bottom: 8px;
+  color: var(--accent);
+}
+
+.generator-box button {
+  background: var(--accent-dim);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.footprint-form h4 {
+  font-size: 12px;
+  margin: 10px 0 6px;
+}
+
+.pad-table {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.pad-table-header,
+.pad-table-row {
+  display: grid;
+  grid-template-columns: 50px 58px 58px 62px 50px 50px 50px 80px 26px;
+  gap: 2px;
+  padding: 2px 4px;
+  align-items: center;
+}
+
+.pad-table-header {
+  font-size: 10px;
+  color: var(--text-dim);
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  padding: 5px 4px;
+}
+
+.pad-table-row input,
+.pad-table-row select {
+  padding: 3px 4px;
+  font-size: 11px;
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+}
+
+.pad-table-row select {
+  padding-right: 16px;
+  background-position: right 3px center;
+}
+
+.pad-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.pad-remove:hover {
+  color: var(--danger);
+}
+
+.footprint-form > button {
+  background: var(--bg-panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.custom-list {
+  margin-top: 12px;
+}
+
+.custom-list h4 {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.custom-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--bg-panel2);
+  border-radius: 5px;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+
+.custom-item button {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 5px;
+}
+
+.custom-item button:hover {
+  color: var(--accent);
+}
+
+.custom-item.editing {
+  outline: 1px solid var(--accent);
+  background: var(--bg-panel);
+}
+
+.custom-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+
+.custom-cat-group {
+  margin-bottom: 8px;
+}
+
+.custom-cat-header {
+  font-size: 11px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 6px 0 3px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.custom-cat-header span {
+  color: var(--text-dim);
+}
+
+.custom-item span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cat-move {
+  font-size: 11px;
+  max-width: 96px;
+  min-height: 24px;
+  padding: 2px 18px 2px 6px;
+  background-position: right 5px center;
+}
+
+.saved-flash {
+  color: #7ee787;
+  font-size: 12px;
+  margin-left: 10px;
+  animation: fadeflash 1.6s ease;
+}
+
+@keyframes fadeflash {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+/* ─── Kütüphane bölümleri ─── */
+.library-section-divider {
+  margin: 10px 4px 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.library-section-divider span {
+  color: var(--text-dim);
+  font-weight: 400;
+  background: var(--bg-panel2);
+  border-radius: 8px;
+  padding: 0 7px;
+}
+
+.library-empty-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 8px 8px;
+  line-height: 1.4;
+}
+
+.library-storage-note {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 4px 8px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-image-btn {
+  width: 100%;
+}
+
+/* ─── Kart Editörü (Kart modu) ─── */
+.board-container {
+  position: relative;
+}
+
+.board-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: calc(100% - 24px);
+  background: rgba(20, 24, 30, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+}
+
+.board-toolbar button {
+  background: var(--bg-panel2);
+  border: 1px solid transparent;
+  color: var(--text);
+  border-radius: 5px;
+  padding: 4px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.board-toolbar button:hover {
+  border-color: var(--border);
+}
+
+.board-toolbar button.active {
+  background: var(--accent);
+  color: #05252a;
+  font-weight: 600;
+}
+
+.board-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 2px;
+}
+
+.board-radius,
+.board-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.board-radius input {
+  width: 58px;
+  padding: 3px 5px;
+  background: var(--bg-input, #0e1116);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+}
+
+.board-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.board-inspector {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  width: 210px;
+  background: rgba(20, 24, 30, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.bi-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.bi-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.bi-field input {
+  width: 92px;
+}
+
+.bi-del {
+  margin-top: 4px;
+  background: rgba(255, 56, 96, 0.14);
+  color: #ff8098;
+  border: 1px solid rgba(255, 56, 96, 0.4);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bi-del:hover:not(:disabled) {
+  background: rgba(255, 56, 96, 0.24);
+}
+
+.bi-del:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dim-input {
+  position: fixed;
+  z-index: 60;
+  transform: translate(-50%, -140%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 3px 5px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.dim-input input {
+  width: 74px;
+  padding: 3px 6px;
+  background: var(--bg-input, #0e1116);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.dim-input span {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ─── Kart ayarları ─── */
+.board-modal {
+  width: 780px;
+}
+
+.board-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+}
+
+.board-settings-grid h4 {
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+/* ─── Otorouter ─── */
+.autoroute-modal {
+  width: 520px;
+}
+
+.autoroute-status {
+  font-size: 13px;
+  padding: 10px;
+  background: var(--bg-panel2);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.autoroute-status .warn {
+  color: var(--warn);
+}
+
+.autoroute-status .ok {
+  color: var(--ok);
+}
+
+.autoroute-result {
+  margin-top: 12px;
+}
+
+.autoroute-result h4 {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.autoroute-log {
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.autoroute-log .ok {
+  color: var(--ok);
+}
+
+.autoroute-log .err {
+  color: var(--danger);
+}
+
+/* Kaydırma çubukları */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3d4655;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ─── Mod sekmeleri (PCB / Şema) ─── */
+.mode-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.mode-tabs button {
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-radius: 4px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mode-tabs button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.lang-select {
+  font-size: 12px;
+}
+
+/* ─── Araç ayar çubuğu ─── */
+.tool-settings-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: var(--bg-panel2);
+  border-bottom: 1px solid var(--border);
+  min-height: 34px;
+  flex-wrap: wrap;
+}
+
+.tsb-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.tsb-num {
+  width: 70px;
+}
+
+.tsb-unit {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.tsb-presets {
+  display: flex;
+  gap: 2px;
+}
+
+.tsb-presets button {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 7px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.tsb-presets button.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tsb-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.tsb-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.tsb-hint.warn {
+  color: var(--warn);
+}
+
+.tsb-action {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tsb-action:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.tsb-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tsb-action.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ─── Pin editörü ─── */
+.pin-editor-modal {
+  width: 560px;
+}
+
+.pin-editor-tools {
+  margin-bottom: 8px;
+}
+
+.quick-nets {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.quick-nets button {
+  background: var(--bg-panel2);
+  color: var(--warn);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quick-nets button:hover:not(:disabled) {
+  border-color: var(--warn);
+}
+
+.quick-nets button:disabled {
+  opacity: 0.35;
+}
+
+.pin-table {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pin-table-header {
+  display: grid;
+  grid-template-columns: 90px 1fr 110px;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.pin-table-body {
+  overflow-y: auto;
+}
+
+.pin-table-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 110px;
+  gap: 6px;
+  padding: 3px 10px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.pin-table-row:hover {
+  background: var(--bg-panel2);
+}
+
+.pin-table-row.active {
+  background: rgba(63, 211, 220, 0.1);
+  outline: 1px solid var(--accent-dim);
+}
+
+.pin-name {
+  font-family: 'Cascadia Code', monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.pin-quick {
+  display: flex;
+  gap: 3px;
+}
+
+.pin-quick button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 3px;
+  padding: 1px 6px;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.pin-quick button:hover {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* ─── Şematik ─── */
+.schematic-container {
+  background: #101418;
+}
+
+.sch-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  background: rgba(27, 31, 38, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+
+.sch-toolbar button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sch-toolbar button:hover {
+  background: var(--bg-panel2);
+}
+
+.sch-toolbar button.active {
+  background: var(--accent-dim);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.sch-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  max-width: 340px;
+  margin-left: 6px;
+}
+
+/* ─── Diğer ─── */
+.source-note {
+  background: rgba(49, 120, 198, 0.15);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.props-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.props-action-btn {
+  background: var(--bg-panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.props-action-btn:hover {
+  border-color: var(--accent);
+}
+
+.layer-row.disabled {
+  opacity: 0.35;
+}
+
+.edit-existing {
+  margin-top: 12px;
+}
+
+.edit-existing h4 {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.edit-existing select {
+  width: 100%;
+}
+
+.brand-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.brand-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── PCB renk seçici ─── */
+.pcb-color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.pcb-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+}
+
+.pcb-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(63, 211, 220, 0.35);
+}
+
+.pcb-swatch-custom {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-input);
+  cursor: pointer;
+}
+
+/* ─── Ayarlar dialogu ─── */
+.settings-modal {
+  width: 560px;
+}
+
+.settings-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.settings-section h4 {
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.settings-section > .settings-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings-row:first-of-type {
+  border-top: none;
+}
+
+.settings-row .settings-label {
+  flex: 1;
+}
+
+.settings-row .settings-label small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.settings-row.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.settings-row select,
+.settings-row input[type='number'] {
+  width: 130px;
+}
+
+.switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  transition: background 0.15s;
+}
+
+.switch .slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.switch input:checked + .slider {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(18px);
+  background: #fff;
+}
+
+/* Dar pencereler: kenar paneller daralabilir, editör alanı korunur */
+@media (max-width: 1150px) {
+  .sidebar-left {
+    width: 200px;
+    min-width: 150px;
+  }
+
+  .sidebar-right {
+    width: 190px;
+    min-width: 140px;
+  }
+
+  .tools .tool-label {
+    display: none;
+  }
+}

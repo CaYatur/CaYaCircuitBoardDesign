@@ -1,0 +1,33 @@
+# Bağımlılıklar
+node_modules/
+
+# Derleme çıktıları
+dist/
+dist-ssr/
+release/
+
+# Ortam / gizli dosyalar
+.env
+.env.local
+.env.*.local
+
+# Editör / IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Claude Code yerel ayarları
+.claude/settings.local.json
+
+# İşletim sistemi
+.DS_Store
+Thumbs.db
+
+# Log dosyaları
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
