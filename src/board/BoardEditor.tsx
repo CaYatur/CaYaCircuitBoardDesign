@@ -49,6 +49,7 @@ interface LabelHit {
     | { kind: 'radius'; index: number; value: number }
     | { kind: 'cutout-w'; id: string; value: number }
     | { kind: 'cutout-h'; id: string; value: number }
+    | { kind: 'hole-d'; index: number; value: number }
 }
 
 const C = {
@@ -75,6 +76,7 @@ export function BoardEditor() {
   const [tool, setTool] = useState<BoardTool>('select')
   const [selVertex, setSelVertex] = useState<number | null>(null)
   const [selCutout, setSelCutout] = useState<string | null>(null)
+  const [selHole, setSelHole] = useState<number | null>(null)
   const [showPcb, setShowPcb] = useState(false)
   const [showDims, setShowDims] = useState(true)
   const [dimEdit, setDimEdit] = useState<
@@ -232,17 +234,30 @@ export function BoardEditor() {
     // PCB bindirmesi (yarı saydam)
     if (showPcb) drawPcbOverlay(ctx, view, project, getFootprint)
 
-    // Montaj delikleri
-    for (const h of board.mountingHoles) {
+    // Montaj delikleri (tekil seçilebilir/düzenlenebilir)
+    board.mountingHoles.forEach((h, i) => {
       const p = W(h)
+      const rpx = (h.drill / 2) * view.scale
       ctx.beginPath()
-      ctx.arc(p.x, p.y, (h.drill / 2) * view.scale, 0, Math.PI * 2)
+      ctx.arc(p.x, p.y, rpx, 0, Math.PI * 2)
       ctx.fillStyle = C.bg
       ctx.fill()
-      ctx.strokeStyle = C.edge
-      ctx.lineWidth = 1.2
+      ctx.strokeStyle = i === selHole ? C.vertexSel : C.edge
+      ctx.lineWidth = i === selHole ? 2.2 : 1.2
       ctx.stroke()
-    }
+      if (i === selHole) {
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, rpx + 4, 0, Math.PI * 2)
+        ctx.strokeStyle = C.vertexSel
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([4, 3])
+        ctx.stroke()
+        ctx.setLineDash([])
+        if (showDims) {
+          drawDimLabel(ctx, p.x, p.y - rpx - 12, `⌀${h.drill.toFixed(2)}`, C.dim, labelHits.current, { kind: 'hole-d', index: i, value: h.drill })
+        }
+      }
+    })
 
     // Kenar ölçüleri + köşe noktaları
     const n = points.length
@@ -380,7 +395,7 @@ export function BoardEditor() {
       }
       ctx.setLineDash([])
     }
-  }, [project, view, size, points, radii, board, selVertex, selCutout, showPcb, showDims, mouseWorld, tick, getFootprint, grid])
+  }, [project, view, size, points, radii, board, selVertex, selCutout, selHole, showPcb, showDims, mouseWorld, tick, getFootprint, grid])
 
   // ── Hizalama yaslaması: sürüklenen köşeyi diğer köşelerin x/y'sine yasla ──
   const alignSnap = useCallback(
@@ -458,16 +473,20 @@ export function BoardEditor() {
       if (vi >= 0) {
         setSelVertex(vi)
         setSelCutout(null)
+        setSelHole(null)
         beginTransaction()
         dragRef.current = { kind: 'vertex', index: vi, moved: false }
         return
       }
 
-      // Montaj deliği
+      // Montaj deliği — tıklayınca seç, sürükleyince taşı
       const hi = board.mountingHoles.findIndex(
         (h) => Math.hypot(h.x - raw.x, h.y - raw.y) <= Math.max(vtol, h.drill / 2)
       )
       if (hi >= 0) {
+        setSelHole(hi)
+        setSelVertex(null)
+        setSelCutout(null)
         beginTransaction()
         dragRef.current = { kind: 'hole', index: hi, moved: false }
         return
@@ -485,6 +504,7 @@ export function BoardEditor() {
           if (raw.x >= cut.x && raw.x <= cut.x + cut.width && raw.y >= cut.y && raw.y <= cut.y + cut.height) {
             setSelCutout(cut.id)
             setSelVertex(null)
+            setSelHole(null)
             beginTransaction()
             dragRef.current = { kind: 'cutout-move', id: cut.id, ox: raw.x - cut.x, oy: raw.y - cut.y, moved: false }
             return
@@ -500,6 +520,7 @@ export function BoardEditor() {
           if (Math.hypot(cut.x - raw.x, cut.y - raw.y) <= rr) {
             setSelCutout(cut.id)
             setSelVertex(null)
+            setSelHole(null)
             beginTransaction()
             dragRef.current = { kind: 'cutout-move', id: cut.id, ox: raw.x - cut.x, oy: raw.y - cut.y, moved: false }
             return
@@ -510,6 +531,7 @@ export function BoardEditor() {
       // Boşluğa tıklama → seçim temizle
       setSelVertex(null)
       setSelCutout(null)
+      setSelHole(null)
     },
     [toWorld, tool, points, view.scale, board, selCutout, snap, beginTransaction]
   )
@@ -684,11 +706,14 @@ export function BoardEditor() {
       }
       switch (e.key) {
         case 'Escape':
-          setDimEdit(null); setSelVertex(null); setSelCutout(null); setTool('select')
+          setDimEdit(null); setSelVertex(null); setSelCutout(null); setSelHole(null); setTool('select')
           break
         case 'Delete':
         case 'Backspace':
-          if (selCutout) {
+          if (selHole !== null) {
+            commit((p) => { p.board.mountingHoles = p.board.mountingHoles.filter((_, i) => i !== selHole) }, t('Montaj deliği silindi'))
+            setSelHole(null)
+          } else if (selCutout) {
             commit((p) => { p.board.cutouts = (p.board.cutouts ?? []).filter((c) => c.id !== selCutout) }, t('Kesim silindi'))
             setSelCutout(null)
           } else if (selVertex !== null && points.length > 3) {
@@ -713,7 +738,7 @@ export function BoardEditor() {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onUp)
     }
-  }, [selCutout, selVertex, points, radii, writePolygon, commit, size, t])
+  }, [selCutout, selVertex, selHole, points, radii, writePolygon, commit, size, t])
 
   // Ölçü düzenlemeyi uygula
   const applyDim = (value: number) => {
@@ -744,6 +769,8 @@ export function BoardEditor() {
       commit((p) => { const c = p.board.cutouts?.find((x) => x.id === a.id); if (c) c.width = Math.max(0.5, value) }, t('Kesim ölçüsü güncellendi'))
     } else if (a.kind === 'cutout-h') {
       commit((p) => { const c = p.board.cutouts?.find((x) => x.id === a.id); if (c) c.height = Math.max(0.5, value) }, t('Kesim ölçüsü güncellendi'))
+    } else if (a.kind === 'hole-d') {
+      commit((p) => { const h = p.board.mountingHoles[a.index]; if (h) h.drill = Math.max(0.3, value) }, t('Delik çapı güncellendi'))
     }
     setDimEdit(null)
   }
@@ -814,12 +841,33 @@ export function BoardEditor() {
           ⊕ {t('Delik')}
         </button>
         <span className="board-hint">
-          {t('Çift tık: köşe ekle/sil · Sürükle: taşı · Shift: hizalı · Ölçüye tıkla: sayısal değiştir')}
+          {t('Çift tık: köşe ekle/sil · Sürükle: taşı · Deliğe tıkla: düzenle/sil (Del) · Shift: hizalı · Ölçüye tıkla: sayısal değiştir')}
         </span>
       </div>
 
-      {(selVertex !== null || selCutout) && (
+      {(selVertex !== null || selCutout || selHole !== null) && (
         <div className="board-inspector">
+          {selHole !== null && board.mountingHoles[selHole] && (
+            <>
+              <div className="bi-title">▪ {t('Montaj deliği')} #{selHole + 1}</div>
+              <NumInput label="X (mm)" value={board.mountingHoles[selHole].x} onCommit={(v) => {
+                commit((p) => { const h = p.board.mountingHoles[selHole]; if (h) h.x = v }, t('Delik güncellendi'))
+              }} />
+              <NumInput label="Y (mm)" value={board.mountingHoles[selHole].y} onCommit={(v) => {
+                commit((p) => { const h = p.board.mountingHoles[selHole]; if (h) h.y = v }, t('Delik güncellendi'))
+              }} />
+              <NumInput label={t('Çap (mm)')} min={0.3} value={board.mountingHoles[selHole].drill} onCommit={(v) => {
+                commit((p) => { const h = p.board.mountingHoles[selHole]; if (h) h.drill = Math.max(0.3, v) }, t('Delik çapı güncellendi'))
+              }} />
+              <button
+                className="bi-del"
+                onClick={() => {
+                  commit((p) => { p.board.mountingHoles = p.board.mountingHoles.filter((_, i) => i !== selHole) }, t('Montaj deliği silindi'))
+                  setSelHole(null)
+                }}
+              >🗑 {t('Deliği sil')}</button>
+            </>
+          )}
           {selVertex !== null && points[selVertex] && (
             <>
               <div className="bi-title">▪ {t('Köşe')} #{selVertex + 1}</div>

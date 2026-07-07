@@ -272,6 +272,175 @@ function soic(id: string, name: string, description: string, pinCount: number): 
   }
 }
 
+/** Çift sıralı SMD kılıf (SOP/TSSOP/SSOP/MSOP) üreteci — gullwing pad'ler */
+function dualSmd(
+  id: string,
+  name: string,
+  description: string,
+  category: string,
+  pinCount: number,
+  pitch: number,
+  rowSpan: number,
+  padW: number,
+  padH: number,
+  bodyW: number,
+  bodyH: number,
+  label?: string
+): Footprint {
+  const perSide = pinCount / 2
+  const startY = -((perSide - 1) * pitch) / 2
+  const pads: PadDef[] = []
+  for (let i = 0; i < perSide; i++) {
+    pads.push({ name: `${i + 1}`, x: -rowSpan / 2, y: startY + i * pitch, shape: 'rect', width: padW, height: padH, layer: 'top' })
+  }
+  for (let i = 0; i < perSide; i++) {
+    pads.push({ name: `${pinCount - i}`, x: rowSpan / 2, y: startY + i * pitch, shape: 'rect', width: padW, height: padH, layer: 'top' })
+  }
+  const silk: SilkElement[] = [
+    ...rectSilk(-bodyW / 2, -bodyH / 2, bodyW, bodyH, 0.15),
+    { kind: 'circle', cx: -bodyW / 2 + 0.5, cy: -bodyH / 2 + 0.5, r: 0.3, width: 0.15 }
+  ]
+  if (label) silk.push({ kind: 'text', x: 0, y: 0, text: label, size: 0.9 })
+  return {
+    id,
+    name,
+    description,
+    category,
+    pads,
+    silk,
+    body: { x: -rowSpan / 2 - padW / 2, y: -bodyH / 2, width: rowSpan + padW, height: bodyH }
+  }
+}
+
+/**
+ * QFP/LQFP/TQFP üreteci — 4 kenar gullwing pad, pin1 sol-üstte, saat yönü
+ * tersi (CCW: sol↓ · alt→ · sağ↑ · üst←). padLong = radyal uzunluk,
+ * padShort = pitch yönü. rowSpan = karşı pad merkez sıraları arası mesafe.
+ */
+function quadFlat(
+  id: string,
+  name: string,
+  description: string,
+  pinsPerSide: number,
+  pitch: number,
+  bodySize: number,
+  padLong: number,
+  padShort: number,
+  rowSpan: number,
+  noLead = false,
+  epSize = 0
+): Footprint {
+  const half = rowSpan / 2
+  const startOff = -((pinsPerSide - 1) * pitch) / 2
+  const pads: PadDef[] = []
+  let pin = 1
+  // Sol kenar (y artan)
+  for (let i = 0; i < pinsPerSide; i++) {
+    pads.push({ name: `${pin++}`, x: -half, y: startOff + i * pitch, shape: 'rect', width: padLong, height: padShort, layer: 'top' })
+  }
+  // Alt kenar (x artan)
+  for (let i = 0; i < pinsPerSide; i++) {
+    pads.push({ name: `${pin++}`, x: startOff + i * pitch, y: half, shape: 'rect', width: padShort, height: padLong, layer: 'top' })
+  }
+  // Sağ kenar (y azalan)
+  for (let i = 0; i < pinsPerSide; i++) {
+    pads.push({ name: `${pin++}`, x: half, y: startOff + (pinsPerSide - 1 - i) * pitch, shape: 'rect', width: padLong, height: padShort, layer: 'top' })
+  }
+  // Üst kenar (x azalan)
+  for (let i = 0; i < pinsPerSide; i++) {
+    pads.push({ name: `${pin++}`, x: startOff + (pinsPerSide - 1 - i) * pitch, y: -half, shape: 'rect', width: padShort, height: padLong, layer: 'top' })
+  }
+  if (epSize > 0) {
+    pads.push({ name: 'EP', x: 0, y: 0, shape: 'rect', width: epSize, height: epSize, layer: 'top' })
+  }
+  const b = bodySize / 2
+  const silk: SilkElement[] = noLead
+    ? [
+        ...rectSilk(-b, -b, bodySize, bodySize, 0.15),
+        { kind: 'circle', cx: -b - 0.4, cy: -b - 0.4, r: 0.35, width: 0.2 }
+      ]
+    : [
+        ...rectSilk(-b, -b, bodySize, bodySize, 0.15),
+        { kind: 'circle', cx: -b + 0.9, cy: -b + 0.9, r: 0.4, width: 0.15 }
+      ]
+  const ext = half + padLong / 2
+  return {
+    id,
+    name,
+    description,
+    category: 'Entegre (IC)',
+    pads,
+    silk,
+    body: { x: -ext, y: -ext, width: ext * 2, height: ext * 2 }
+  }
+}
+
+/** SMD kutuplu (polarize) 2 pad — elektrolitik/tantalum. Pin1 = '+' */
+function smdPolar(
+  id: string,
+  name: string,
+  description: string,
+  category: string,
+  padCenter: number,
+  padW: number,
+  padH: number,
+  bodyW: number,
+  bodyH: number,
+  round = false
+): Footprint {
+  const silk: SilkElement[] = round
+    ? [
+        { kind: 'circle', cx: 0, cy: 0, r: bodyW / 2, width: 0.15 },
+        { kind: 'line', x1: -bodyW / 2, y1: -bodyH * 0.28, x2: -bodyW / 2, y2: bodyH * 0.28, width: 0.4 },
+        { kind: 'text', x: -padCenter - padW * 0.2, y: -bodyH / 2 - 0.6, text: '+', size: 1 }
+      ]
+    : [
+        ...rectSilk(-bodyW / 2, -bodyH / 2, bodyW, bodyH, 0.15),
+        { kind: 'line', x1: bodyW / 2 - 0.6, y1: -bodyH / 2, x2: bodyW / 2 - 0.6, y2: bodyH / 2, width: 0.4 },
+        { kind: 'text', x: padCenter, y: -bodyH / 2 - 0.6, text: '+', size: 1 }
+      ]
+  return {
+    id,
+    name,
+    description,
+    category,
+    pads: [
+      { name: '+', x: -padCenter, y: 0, shape: 'rect', width: padW, height: padH, layer: 'top' },
+      { name: '-', x: padCenter, y: 0, shape: 'rect', width: padW, height: padH, layer: 'top' }
+    ],
+    silk,
+    body: { x: -bodyW / 2, y: -Math.max(padH, bodyH) / 2, width: bodyW, height: Math.max(padH, bodyH) }
+  }
+}
+
+/** SMD polarize diyot (SOD/SMA/SMB/SMC) — pin1 = katot (bant tarafı) */
+function smdDiode(
+  id: string,
+  name: string,
+  description: string,
+  padCenter: number,
+  padW: number,
+  padH: number,
+  bodyW: number,
+  bodyH: number
+): Footprint {
+  return {
+    id,
+    name,
+    description,
+    category: 'Diyot & LED',
+    pads: [
+      { name: 'K', x: -padCenter, y: 0, shape: 'rect', width: padW, height: padH, layer: 'top' },
+      { name: 'A', x: padCenter, y: 0, shape: 'rect', width: padW, height: padH, layer: 'top' }
+    ],
+    silk: [
+      ...rectSilk(-bodyW / 2, -bodyH / 2, bodyW, bodyH, 0.15),
+      { kind: 'line', x1: -bodyW / 2 + 0.5, y1: -bodyH / 2, x2: -bodyW / 2 + 0.5, y2: bodyH / 2, width: 0.4 }
+    ],
+    body: { x: -padCenter - padW / 2, y: -Math.max(padH, bodyH) / 2, width: 2 * padCenter + padW, height: Math.max(padH, bodyH) }
+  }
+}
+
 // ─── Kütüphane ────────────────────────────────────────────────────────────
 
 export const builtinFootprints: Footprint[] = [
@@ -925,6 +1094,208 @@ export const builtinFootprints: Footprint[] = [
       ...rectSilk(-13, -5, 26, 13)
     ],
     body: { x: -13.65, y: -13.9, width: 27.3, height: 27.8 }
+  },
+
+  // ═══════════════════ SMD (Yüzey Montaj) ═══════════════════
+  // ── SMD Direnç (ek boyutlar) ──
+  smdChip('r-0201', 'Direnç 0201 (SMD)', 'SMD direnç 0201 — 0.6×0.3 mm', 'Direnç', 0.33, 0.4, 0.45, 0.6, 0.3),
+  smdChip('r-0402', 'Direnç 0402 (SMD)', 'SMD direnç 0402 — 1.0×0.5 mm', 'Direnç', 0.51, 0.6, 0.6, 1.0, 0.5),
+  smdChip('r-1210', 'Direnç 1210 (SMD)', 'SMD direnç 1210 — 3.2×2.5 mm', 'Direnç', 1.5, 1.2, 2.7, 3.2, 2.5),
+  smdChip('r-2512', 'Direnç 2512 (SMD)', 'SMD güç direnci 2512 — 6.3×3.2 mm (1-2 W)', 'Direnç', 2.95, 1.6, 3.4, 6.3, 3.2),
+
+  // ── SMD Kondansatör (ek boyutlar) ──
+  smdChip('c-0402', 'Kondansatör 0402 (SMD)', 'MLCC 0402 — 1.0×0.5 mm', 'Kondansatör', 0.51, 0.6, 0.6, 1.0, 0.5),
+  smdChip('c-1210', 'Kondansatör 1210 (SMD)', 'MLCC 1210 — 3.2×2.5 mm', 'Kondansatör', 1.5, 1.2, 2.7, 3.2, 2.5),
+  // SMD Elektrolitik (V-chip alüminyum, kutuplu)
+  smdPolar('c-smd-elec-4', 'SMD Elektrolitik Ø4', 'V-chip alüminyum elektrolitik — Ø4×5.4 mm', 'Kondansatör', 1.6, 1.1, 2.0, 4.3, 4.3, true),
+  smdPolar('c-smd-elec-6.3', 'SMD Elektrolitik Ø6.3', 'V-chip alüminyum elektrolitik — Ø6.3×5.4 mm', 'Kondansatör', 2.4, 1.4, 2.6, 6.6, 6.6, true),
+  smdPolar('c-smd-elec-8', 'SMD Elektrolitik Ø8', 'V-chip alüminyum elektrolitik — Ø8×10 mm', 'Kondansatör', 3.1, 1.6, 3.2, 8.4, 8.4, true),
+  // SMD Tantalum (EIA kılıfları)
+  smdPolar('c-tant-a', 'Tantalum A (3216)', 'SMD tantalum kondansatör — kılıf A / 3216', 'Kondansatör', 1.5, 1.2, 1.8, 3.2, 1.6),
+  smdPolar('c-tant-b', 'Tantalum B (3528)', 'SMD tantalum kondansatör — kılıf B / 3528', 'Kondansatör', 1.65, 1.4, 2.2, 3.5, 2.8),
+  smdPolar('c-tant-c', 'Tantalum C (6032)', 'SMD tantalum kondansatör — kılıf C / 6032', 'Kondansatör', 2.7, 1.6, 2.6, 6.0, 3.2),
+  smdPolar('c-tant-d', 'Tantalum D (7343)', 'SMD tantalum kondansatör — kılıf D / 7343', 'Kondansatör', 3.2, 1.6, 2.8, 7.3, 4.3),
+
+  // ── SMD Diyot & LED ──
+  smdDiode('d-sod123', 'Diyot SOD-123', 'SMD diyot SOD-123 (ör. 1N4148W). Bant = katot', 1.9, 1.0, 1.2, 2.7, 1.6),
+  smdDiode('d-sod323', 'Diyot SOD-323', 'SMD diyot SOD-323. Bant = katot', 1.35, 0.7, 0.9, 1.7, 1.25),
+  smdDiode('d-sma', 'Diyot SMA (DO-214AC)', 'SMD güç diyodu SMA (ör. 1N4007 SMD). Bant = katot', 2.3, 1.5, 1.6, 4.3, 2.6),
+  smdDiode('d-smb', 'Diyot SMB (DO-214AA)', 'SMD güç diyodu SMB. Bant = katot', 2.4, 1.6, 2.2, 4.3, 3.6),
+  smdDiode('d-smc', 'Diyot SMC (DO-214AB)', 'SMD güç diyodu SMC. Bant = katot', 3.3, 1.8, 3.2, 6.9, 4.6),
+  smdChip('led-0603', 'LED 0603 (SMD)', 'SMD LED 0603 — 1.6×0.8 mm', 'Diyot & LED', 0.8, 0.8, 1.0, 1.6, 0.8),
+  smdChip('led-1206', 'LED 1206 (SMD)', 'SMD LED 1206 — 3.2×1.6 mm', 'Diyot & LED', 1.45, 1.1, 1.7, 3.2, 1.6),
+  smdChip('led-3528', 'LED 3528 (PLCC-2)', 'SMD LED 3528 — 3.5×2.8 mm', 'Diyot & LED', 1.6, 1.3, 3.0, 3.5, 2.8),
+
+  // ── SOT transistör/regülatör kılıfları ──
+  {
+    id: 'sot23-5',
+    name: 'SOT-23-5',
+    description: 'SOT-23-5 SMD kılıf — 0.95 mm pitch (ör. regülatör, op-amp)',
+    category: 'Transistör & Regülatör',
+    pads: [
+      { name: '1', x: -0.95, y: 1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '2', x: 0, y: 1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '3', x: 0.95, y: 1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '4', x: 0.95, y: -1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '5', x: -0.95, y: -1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' }
+    ],
+    silk: [...rectSilk(-0.8, -0.7, 1.6, 1.4, 0.12), { kind: 'circle', cx: -1.3, cy: 1.5, r: 0.25, width: 0.12 }],
+    body: { x: -1.5, y: -1.7, width: 3.0, height: 3.4 }
+  },
+  {
+    id: 'sot23-6',
+    name: 'SOT-23-6',
+    description: 'SOT-23-6 / TSOT-6 SMD kılıf — 0.95 mm pitch',
+    category: 'Transistör & Regülatör',
+    pads: [
+      { name: '1', x: -0.95, y: 1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '2', x: 0, y: 1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '3', x: 0.95, y: 1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '4', x: 0.95, y: -1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '5', x: 0, y: -1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' },
+      { name: '6', x: -0.95, y: -1.0, shape: 'rect', width: 0.6, height: 1.0, layer: 'top' }
+    ],
+    silk: [...rectSilk(-0.8, -0.7, 1.6, 1.4, 0.12), { kind: 'circle', cx: -1.3, cy: 1.5, r: 0.25, width: 0.12 }],
+    body: { x: -1.5, y: -1.7, width: 3.0, height: 3.4 }
+  },
+  {
+    id: 'sot363',
+    name: 'SOT-363 (SC-70-6)',
+    description: 'SOT-363 / SC-70-6 SMD kılıf — 0.65 mm pitch',
+    category: 'Transistör & Regülatör',
+    pads: [
+      { name: '1', x: -0.65, y: 0.575, shape: 'rect', width: 0.4, height: 0.7, layer: 'top' },
+      { name: '2', x: 0, y: 0.575, shape: 'rect', width: 0.4, height: 0.7, layer: 'top' },
+      { name: '3', x: 0.65, y: 0.575, shape: 'rect', width: 0.4, height: 0.7, layer: 'top' },
+      { name: '4', x: 0.65, y: -0.575, shape: 'rect', width: 0.4, height: 0.7, layer: 'top' },
+      { name: '5', x: 0, y: -0.575, shape: 'rect', width: 0.4, height: 0.7, layer: 'top' },
+      { name: '6', x: -0.65, y: -0.575, shape: 'rect', width: 0.4, height: 0.7, layer: 'top' }
+    ],
+    silk: [...rectSilk(-1.0, -0.55, 2.0, 1.1, 0.1)],
+    body: { x: -1.1, y: -1.1, width: 2.2, height: 2.2 }
+  },
+  {
+    id: 'sot89',
+    name: 'SOT-89',
+    description: 'SOT-89 SMD güç kılıfı — 1.5 mm pitch + geniş kolektör pedi',
+    category: 'Transistör & Regülatör',
+    pads: [
+      { name: '1', x: -1.5, y: 1.65, shape: 'rect', width: 0.7, height: 1.2, layer: 'top' },
+      { name: '2', x: 0, y: 1.65, shape: 'rect', width: 0.7, height: 1.2, layer: 'top' },
+      { name: '3', x: 1.5, y: 1.65, shape: 'rect', width: 0.7, height: 1.2, layer: 'top' },
+      { name: 'TAB', x: 0, y: -0.9, shape: 'rect', width: 1.7, height: 1.8, layer: 'top' }
+    ],
+    silk: [...rectSilk(-2.3, -1.8, 4.6, 2.6, 0.12)],
+    body: { x: -2.3, y: -1.8, width: 4.6, height: 4.65 }
+  },
+  {
+    id: 'sot223',
+    name: 'SOT-223',
+    description: 'SOT-223 SMD regülatör kılıfı — 2.3 mm pitch + geniş tab (ör. AMS1117)',
+    category: 'Transistör & Regülatör',
+    pads: [
+      { name: '1', x: -2.3, y: 3.2, shape: 'rect', width: 1.0, height: 2.0, layer: 'top' },
+      { name: '2', x: 0, y: 3.2, shape: 'rect', width: 1.0, height: 2.0, layer: 'top' },
+      { name: '3', x: 2.3, y: 3.2, shape: 'rect', width: 1.0, height: 2.0, layer: 'top' },
+      { name: '4', x: 0, y: -3.0, shape: 'rect', width: 3.5, height: 2.0, layer: 'top' }
+    ],
+    silk: [...rectSilk(-3.3, -1.8, 6.6, 3.6, 0.15), { kind: 'text', x: 0, y: 0, text: '223', size: 1 }],
+    body: { x: -3.3, y: -4.0, width: 6.6, height: 8.2 }
+  },
+
+  // ── Güç: DPAK / D2PAK (MOSFET, regülatör) ──
+  {
+    id: 'to252-dpak',
+    name: 'TO-252 (DPAK)',
+    description: 'DPAK SMD güç kılıfı — MOSFET/regülatör, geniş drain tab',
+    category: 'Transistör & Regülatör',
+    pads: [
+      { name: '1', x: -2.28, y: 2.9, shape: 'rect', width: 0.9, height: 1.6, layer: 'top' },
+      { name: '3', x: 2.28, y: 2.9, shape: 'rect', width: 0.9, height: 1.6, layer: 'top' },
+      { name: 'TAB', x: 0, y: -1.4, shape: 'rect', width: 5.4, height: 3.0, layer: 'top' }
+    ],
+    silk: [...rectSilk(-3.1, -2.8, 6.2, 5.8, 0.15), { kind: 'text', x: 0, y: 3.9, text: 'DPAK', size: 0.9 }],
+    body: { x: -3.1, y: -2.9, width: 6.2, height: 6.6 }
+  },
+  {
+    id: 'to263-d2pak',
+    name: 'TO-263 (D2PAK)',
+    description: 'D2PAK SMD güç kılıfı — yüksek akım MOSFET/regülatör',
+    category: 'Transistör & Regülatör',
+    pads: [
+      { name: '1', x: -2.54, y: 4.6, shape: 'rect', width: 1.2, height: 2.2, layer: 'top' },
+      { name: '2', x: 0, y: 4.6, shape: 'rect', width: 1.2, height: 2.2, layer: 'top' },
+      { name: '3', x: 2.54, y: 4.6, shape: 'rect', width: 1.2, height: 2.2, layer: 'top' },
+      { name: 'TAB', x: 0, y: -1.8, shape: 'rect', width: 9.0, height: 4.8, layer: 'top' }
+    ],
+    silk: [...rectSilk(-5.1, -4.5, 10.2, 9.6, 0.15), { kind: 'text', x: 0, y: 6.2, text: 'D2PAK', size: 1 }],
+    body: { x: -5.1, y: -4.5, width: 10.2, height: 10.7 }
+  },
+
+  // ── SMD Entegreler: SOP / TSSOP / SSOP / MSOP ──
+  dualSmd('msop8', 'MSOP-8', 'MSOP-8 SMD kılıf — 0.65 mm pitch', 'Entegre (IC)', 8, 0.65, 4.4, 1.3, 0.4, 3.0, 3.0),
+  dualSmd('tssop8', 'TSSOP-8', 'TSSOP-8 SMD kılıf — 0.65 mm pitch', 'Entegre (IC)', 8, 0.65, 5.4, 1.4, 0.45, 3.0, 4.4),
+  dualSmd('tssop14', 'TSSOP-14', 'TSSOP-14 SMD kılıf — 0.65 mm pitch', 'Entegre (IC)', 14, 0.65, 5.4, 1.4, 0.45, 3.0, 5.0),
+  dualSmd('tssop16', 'TSSOP-16', 'TSSOP-16 SMD kılıf — 0.65 mm pitch', 'Entegre (IC)', 16, 0.65, 5.4, 1.4, 0.45, 3.0, 5.0),
+  dualSmd('tssop20', 'TSSOP-20', 'TSSOP-20 SMD kılıf — 0.65 mm pitch', 'Entegre (IC)', 20, 0.65, 5.4, 1.4, 0.45, 3.0, 6.5),
+  dualSmd('ssop28', 'SSOP-28', 'SSOP-28 SMD kılıf — 0.65 mm pitch (ör. CH340, PCA9685)', 'Entegre (IC)', 28, 0.65, 7.4, 1.6, 0.45, 5.3, 10.2),
+  dualSmd('sop8-wide', 'SOP-8 geniş (SO-8W)', 'Geniş gövdeli SOP-8 — 1.27 mm pitch, 7.5 mm gövde', 'Entegre (IC)', 8, 1.27, 9.4, 1.7, 0.6, 7.5, 5.0),
+
+  // ── SMD Entegreler: QFP / LQFP / TQFP ──
+  quadFlat('tqfp32', 'TQFP-32', 'TQFP-32 — 0.8 mm pitch, 7×7 mm gövde (ör. ATmega328P-AU)', 8, 0.8, 7.0, 1.5, 0.5, 8.4),
+  quadFlat('tqfp44', 'TQFP-44', 'TQFP-44 — 0.8 mm pitch, 10×10 mm gövde (ör. ATmega16/32)', 11, 0.8, 10.0, 1.5, 0.5, 11.4),
+  quadFlat('lqfp48', 'LQFP-48', 'LQFP-48 — 0.5 mm pitch, 7×7 mm gövde (ör. STM32F103)', 12, 0.5, 7.0, 1.4, 0.3, 8.4),
+  quadFlat('lqfp64', 'LQFP-64', 'LQFP-64 — 0.5 mm pitch, 10×10 mm gövde (ör. STM32F4)', 16, 0.5, 10.0, 1.4, 0.3, 11.4),
+  quadFlat('lqfp100', 'LQFP-100', 'LQFP-100 — 0.5 mm pitch, 14×14 mm gövde', 25, 0.5, 14.0, 1.4, 0.3, 15.4),
+
+  // ── SMD Entegreler: QFN / DFN (no-lead + termal ped) ──
+  quadFlat('qfn16', 'QFN-16', 'QFN-16 — 0.5 mm pitch, 3×3 mm + termal ped', 4, 0.5, 3.0, 0.75, 0.3, 2.9, true, 1.7),
+  quadFlat('qfn20', 'QFN-20', 'QFN-20 — 0.5 mm pitch, 4×4 mm + termal ped', 5, 0.5, 4.0, 0.75, 0.3, 3.9, true, 2.6),
+  quadFlat('qfn24', 'QFN-24', 'QFN-24 — 0.5 mm pitch, 4×4 mm + termal ped', 6, 0.5, 4.0, 0.75, 0.3, 3.9, true, 2.6),
+  quadFlat('qfn32', 'QFN-32', 'QFN-32 — 0.5 mm pitch, 5×5 mm + termal ped (ör. ESP8266EX)', 8, 0.5, 5.0, 0.75, 0.3, 4.9, true, 3.4),
+  quadFlat('qfn48', 'QFN-48', 'QFN-48 — 0.5 mm pitch, 6×6 mm + termal ped (ör. ESP32-D0WD)', 12, 0.5, 6.0, 0.75, 0.3, 5.9, true, 4.2),
+
+  // ── SMD Konnektörler ──
+  {
+    id: 'usb-c-16',
+    name: 'USB-C Dişi (16 pin SMD)',
+    description: 'USB Type-C dişi soket — 16 SMT pad + 4 gövde tutturma delikli. Yaklaşık yerleşim',
+    category: 'Konnektör',
+    pads: (() => {
+      const pads: PadDef[] = []
+      const names = ['GND', 'CC2', 'DP2', 'DN2', 'SBU2', 'VBUS', 'GND2', 'DN1', 'DP1', 'CC1', 'VBUS2', 'SBU1']
+      const startX = -((names.length - 1) * 0.5) / 2
+      names.forEach((n, i) => {
+        pads.push({ name: n, x: startX + i * 0.5, y: 4.3, shape: 'rect', width: 0.3, height: 1.2, layer: 'top' })
+      })
+      // Gövde tutturma pedleri (kenar)
+      pads.push(
+        { name: 'S1', x: -4.32, y: 1.0, shape: 'rect', width: 1.8, height: 2.0, layer: 'top' },
+        { name: 'S2', x: 4.32, y: 1.0, shape: 'rect', width: 1.8, height: 2.0, layer: 'top' },
+        { name: 'H1', x: -2.9, y: 1.6, shape: 'circle', width: 1.2, height: 1.2, drill: 0.65, layer: 'both' },
+        { name: 'H2', x: 2.9, y: 1.6, shape: 'circle', width: 1.2, height: 1.2, drill: 0.65, layer: 'both' }
+      )
+      return pads
+    })(),
+    silk: [...rectSilk(-4.47, -1.6, 8.94, 4.5, 0.15), { kind: 'text', x: 0, y: -0.2, text: 'USB-C', size: 1 }],
+    body: { x: -4.47, y: -1.6, width: 8.94, height: 6.6 }
+  },
+  {
+    id: 'micro-usb-smd',
+    name: 'Micro-USB Dişi (SMD)',
+    description: 'Micro-USB Type-B dişi soket — 5 SMT pin + 4 gövde tutturma bacağı',
+    category: 'Konnektör',
+    pads: [
+      ...['VBUS', 'DN', 'DP', 'ID', 'GND'].map((n, i) => ({
+        name: n, x: -1.3 + i * 0.65, y: 2.5, shape: 'rect' as const, width: 0.4, height: 1.35, layer: 'top' as const
+      })),
+      { name: 'S1', x: -3.5, y: 1.0, shape: 'rect', width: 1.5, height: 1.9, layer: 'top' },
+      { name: 'S2', x: 3.5, y: 1.0, shape: 'rect', width: 1.5, height: 1.9, layer: 'top' },
+      { name: 'S3', x: -2.5, y: -2.5, shape: 'circle', width: 1.4, height: 1.4, drill: 0.9, layer: 'both' },
+      { name: 'S4', x: 2.5, y: -2.5, shape: 'circle', width: 1.4, height: 1.4, drill: 0.9, layer: 'both' }
+    ],
+    silk: [...rectSilk(-3.6, -3.0, 7.2, 5.0, 0.15), { kind: 'text', x: 0, y: -0.5, text: 'µUSB', size: 0.9 }],
+    body: { x: -3.6, y: -3.0, width: 7.2, height: 5.6 }
   }
 ]
 

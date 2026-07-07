@@ -115,6 +115,14 @@ const en: Record<string, string> = {
   'Dışa aktar': 'Export',
   'Dil / Language': 'Language',
   'Kart yerleşimi ve rotalama': 'Board layout & routing',
+  '3B Görünüm': '3D View',
+  '3B görünüm — kartı ve bileşenleri üç boyutlu görüntüleyin':
+    '3D view — see the board and components in three dimensions',
+  '3B görünüm — sürükle: döndür, tekerlek: yakınlaştır, sağ tık: kaydır':
+    '3D view — drag: rotate, wheel: zoom, right-drag: pan',
+  '{name} şemaya eklendi': '{name} added to schematic',
+  'Komponent eklemek için PCB veya Şema moduna geçin':
+    'Switch to PCB or Schematic mode to add a component',
   'Devre şeması — teller PCB netlerine senkronlanır':
     'Circuit schematic — wires sync to PCB nets',
   'CaYa PCB Studio — Geliştirici: CaYaDev · cayadev.com':
@@ -285,6 +293,31 @@ const en: Record<string, string> = {
   'HC-SR04 Ultrasonik': 'HC-SR04 Ultrasonic',
   'NRF24L01+ Modülü': 'NRF24L01+ Module',
   'DS3231 RTC Modülü': 'DS3231 RTC Module',
+  // ── SMD footprint adları ──
+  'Direnç 0201 (SMD)': 'Resistor 0201 (SMD)',
+  'Direnç 0402 (SMD)': 'Resistor 0402 (SMD)',
+  'Direnç 1210 (SMD)': 'Resistor 1210 (SMD)',
+  'Direnç 2512 (SMD)': 'Resistor 2512 (SMD)',
+  'Kondansatör 0402 (SMD)': 'Capacitor 0402 (SMD)',
+  'Kondansatör 1210 (SMD)': 'Capacitor 1210 (SMD)',
+  'SMD Elektrolitik Ø4': 'SMD Electrolytic Ø4',
+  'SMD Elektrolitik Ø6.3': 'SMD Electrolytic Ø6.3',
+  'SMD Elektrolitik Ø8': 'SMD Electrolytic Ø8',
+  'Tantalum A (3216)': 'Tantalum A (3216)',
+  'Tantalum B (3528)': 'Tantalum B (3528)',
+  'Tantalum C (6032)': 'Tantalum C (6032)',
+  'Tantalum D (7343)': 'Tantalum D (7343)',
+  'Diyot SOD-123': 'Diode SOD-123',
+  'Diyot SOD-323': 'Diode SOD-323',
+  'Diyot SMA (DO-214AC)': 'Diode SMA (DO-214AC)',
+  'Diyot SMB (DO-214AA)': 'Diode SMB (DO-214AA)',
+  'Diyot SMC (DO-214AB)': 'Diode SMC (DO-214AB)',
+  'LED 0603 (SMD)': 'LED 0603 (SMD)',
+  'LED 1206 (SMD)': 'LED 1206 (SMD)',
+  'LED 3528 (PLCC-2)': 'LED 3528 (PLCC-2)',
+  'SOP-8 geniş (SO-8W)': 'SOP-8 wide (SO-8W)',
+  'USB-C Dişi (16 pin SMD)': 'USB-C Female (16-pin SMD)',
+  'Micro-USB Dişi (SMD)': 'Micro-USB Female (SMD)',
 
   // ── Özellikler paneli ──
   'Nesne seçilmedi.': 'Nothing selected.',
@@ -606,6 +639,13 @@ const en: Record<string, string> = {
   'Bağlantı toleransı': 'Connection tolerance',
   'Bu mesafedeki (mm) uçlar "bağlı" sayılır': 'Ends within this distance (mm) count as "connected"',
   'Genel': 'General',
+  'Şema & Netler': 'Schematic & Nets',
+  'Yol silinince net atamalarını temizle': 'Clear net assignments when a path is deleted',
+  'Bir tel (şema) veya iz (PCB) silindiğinde, yalnız o yolun verdiği ve başka bağlantıyla desteklenmeyen net atamaları da kaldırılır. Varsayılan: açık':
+    'When a wire (schematic) or trace (PCB) is deleted, net assignments that only that path provided — and no other connection supports — are removed too. Default: on',
+  'Standart şema sembolleri': 'Standard schematic symbols',
+  'Pasif bileşenleri (direnç, kondansatör, diyot/LED, bobin, kristal) standart devre şeması sembolleriyle göster. Kapalıysa hepsi kutu sembolüdür. Varsayılan: açık':
+    'Show passive components (resistor, capacitor, diode/LED, inductor, crystal) with standard schematic symbols. When off, everything is a box symbol. Default: on',
   'Kapatırken kaydedilmemiş değişiklik uyarısı': 'Warn about unsaved changes on close',
   'Kaydedilmemiş işiniz varken uygulamayı kapatmadan önce sorar':
     'Asks before closing the app while you have unsaved work',
@@ -731,6 +771,11 @@ const en: Record<string, string> = {
   'Montaj deliği ekle': 'Add mounting hole',
   'Montaj deliği çapı (mm)': 'Mounting hole diameter (mm)',
   'Montaj deliği eklendi': 'Mounting hole added',
+  'Montaj deliği': 'Mounting hole',
+  'Montaj deliği silindi': 'Mounting hole deleted',
+  'Delik güncellendi': 'Hole updated',
+  'Delik çapı güncellendi': 'Hole diameter updated',
+  'Deliği sil': 'Delete hole',
   'Köşe R': 'Corner R',
   'Köşe': 'Corner',
   'Yuvarlatma R (mm)': 'Fillet R (mm)',
@@ -755,6 +800,20 @@ const en: Record<string, string> = {
   'Kart yüksekliği {v} mm': 'Board height {v} mm',
   'Çift tık: köşe ekle/sil · Sürükle: taşı · Shift: hizalı · Ölçüye tıkla: sayısal değiştir':
     'Double-click: add/remove vertex · Drag: move · Shift: aligned · Click a dimension: edit numerically',
+  'Çift tık: köşe ekle/sil · Sürükle: taşı · Deliğe tıkla: düzenle/sil (Del) · Shift: hizalı · Ölçüye tıkla: sayısal değiştir':
+    'Double-click: add/remove vertex · Drag: move · Click a hole: edit/delete (Del) · Shift: aligned · Click a dimension: edit numerically',
+
+  // ── 3B görünüm ──
+  'İzometrik görünüm': 'Isometric view',
+  'İzometrik': 'Isometric',
+  'Üstten görünüm': 'Top view',
+  'Alttan görünüm': 'Bottom view',
+  'Önden görünüm': 'Front view',
+  'Ön': 'Front',
+  'Bileşenler': 'Components',
+  'İzler': 'Traces',
+  'Sürükle: döndür · Tekerlek: yakınlaştır · Sağ tık/Boşluk+sürükle: kaydır':
+    'Drag: rotate · Wheel: zoom · Right-click/Space+drag: pan',
 
   // ── Yeni: ızgara ──
   'Görünüm': 'View',

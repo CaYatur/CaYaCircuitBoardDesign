@@ -83,13 +83,6 @@ export function Toolbar() {
 
       <div className="mode-tabs">
         <button
-          className={mode === 'pcb' ? 'active' : ''}
-          onClick={() => setMode('pcb')}
-          title={t('Kart yerleşimi ve rotalama')}
-        >
-          ▦ PCB
-        </button>
-        <button
           className={mode === 'schematic' ? 'active' : ''}
           onClick={() => setMode('schematic')}
           title={t('Devre şeması — teller PCB netlerine senkronlanır')}
@@ -97,11 +90,25 @@ export function Toolbar() {
           ⌁ {t('Şema')}
         </button>
         <button
+          className={mode === 'pcb' ? 'active' : ''}
+          onClick={() => setMode('pcb')}
+          title={t('Kart yerleşimi ve rotalama')}
+        >
+          ▦ PCB
+        </button>
+        <button
           className={mode === 'board' ? 'active' : ''}
           onClick={() => setMode('board')}
           title={t('Kart dış hattını ölçülü, profesyonel biçimde düzenleyin')}
         >
           ▧ {t('Kart Editörü')}
+        </button>
+        <button
+          className={mode === 'view3d' ? 'active' : ''}
+          onClick={() => setMode('view3d')}
+          title={t('3B görünüm — kartı ve bileşenleri üç boyutlu görüntüleyin')}
+        >
+          ⬢ {t('3B Görünüm')}
         </button>
       </div>
 

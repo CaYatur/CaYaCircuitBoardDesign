@@ -309,6 +309,57 @@ export function syncSchematicNets(
   }
 }
 
+/**
+ * Belirli bir telin uçlarına/segmentlerine değen komponent pinleri.
+ * (Tel silinmeden ÖNCE çağrılır — hangi atamaların etkileneceğini bulmak için.)
+ */
+export function pinsOnWire(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  wirePoints: Point[]
+): { componentId: string; padName: string }[] {
+  const out: { componentId: string; padName: string }[] = []
+  for (const sym of project.schematic.symbols) {
+    const comp = project.components.find((c) => c.id === sym.componentId)
+    if (!comp) continue
+    const fp = getFootprint(comp.footprintId)
+    if (!fp) continue
+    for (const pin of symbolLayout(fp).pins) {
+      const pos = symbolToWorld(sym, pin.end)
+      if (wirePoints.some((p) => near(p, pos)) || pointOnWire(pos, wirePoints)) {
+        out.push({ componentId: comp.id, padName: pin.name })
+      }
+    }
+  }
+  return out
+}
+
+/** Herhangi bir tele (hâlâ) bağlı olan pinlerin `compId::padName` kümesi. */
+export function schematicConnectedPins(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined
+): Set<string> {
+  const set = new Set<string>()
+  const wires = project.schematic.wires
+  if (wires.length === 0) return set
+  for (const sym of project.schematic.symbols) {
+    const comp = project.components.find((c) => c.id === sym.componentId)
+    if (!comp) continue
+    const fp = getFootprint(comp.footprintId)
+    if (!fp) continue
+    for (const pin of symbolLayout(fp).pins) {
+      const pos = symbolToWorld(sym, pin.end)
+      for (const w of wires) {
+        if (w.points.some((p) => near(p, pos)) || pointOnWire(pos, w.points)) {
+          set.add(`${comp.id}::${pin.name}`)
+          break
+        }
+      }
+    }
+  }
+  return set
+}
+
 /** Tel çizim yardımcıları */
 export const snapSch = (p: Point): Point => ({
   x: Math.round(p.x / SCH_GRID) * SCH_GRID,

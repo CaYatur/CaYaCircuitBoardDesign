@@ -128,11 +128,25 @@ export function LibraryPanel() {
   }
 
   const placeFp = (f: Footprint) => {
-    if (mode !== 'pcb') {
-      setStatus(t('Komponent yerleştirmek için PCB moduna geçin'))
+    if (mode === 'pcb') {
+      startPlacing(placingId === f.id ? null : f.id)
       return
     }
-    startPlacing(placingId === f.id ? null : f.id)
+    if (mode === 'schematic') {
+      // Şema modunda: bileşeni doğrudan ekle (sembolü otomatik oluşur, PCB'de
+      // kademeli bir konuma yerleşir; sonra PCB'de düzenlenebilir)
+      const st = useStore.getState()
+      const p = st.project
+      const n = p.components.length
+      const bw = p.board.width
+      const bh = p.board.height
+      const x = Math.min(Math.max(6, bw - 6), 8 + (n % 8) * 5)
+      const y = Math.min(Math.max(6, bh - 6), 8 + Math.floor(n / 8) * 6)
+      st.placeComponent(f.id, x, y)
+      setStatus(t('{name} şemaya eklendi', { name: t(f.name) }))
+      return
+    }
+    setStatus(t('Komponent eklemek için PCB veya Şema moduna geçin'))
   }
 
   const renderItem = (f: Footprint) => (

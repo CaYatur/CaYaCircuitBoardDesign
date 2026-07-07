@@ -26,6 +26,8 @@ export function SettingsDialog() {
   const openDialog = useStore((s) => s.openDialog)
   const cf = useStore((s) => s.project.settings.connectionFollow)
   const warnOnUnsavedClose = useStore((s) => s.project.settings.warnOnUnsavedClose)
+  const clearNetsOnPathDelete = useStore((s) => s.project.settings.clearNetsOnPathDelete ?? true)
+  const schematicStandardSymbols = useStore((s) => s.project.settings.schematicStandardSymbols ?? true)
   const updateSettings = useStore((s) => s.updateSettings)
   const t = useT()
 
@@ -102,6 +104,33 @@ export function SettingsDialog() {
               min={0.001}
               value={cf.tolerance}
               onChange={(e) => setCf({ tolerance: Math.max(0.001, parseFloat(e.target.value) || 0.001) })}
+            />
+          </div>
+        </div>
+
+        {/* ── Şema & Netler ── */}
+        <div className="settings-section">
+          <h4>{t('Şema & Netler')}</h4>
+
+          <div className="settings-row">
+            <span className="settings-label">
+              {t('Yol silinince net atamalarını temizle')}
+              <small>{t('Bir tel (şema) veya iz (PCB) silindiğinde, yalnız o yolun verdiği ve başka bağlantıyla desteklenmeyen net atamaları da kaldırılır. Varsayılan: açık')}</small>
+            </span>
+            <Toggle
+              checked={clearNetsOnPathDelete}
+              onChange={(v) => updateSettings((p) => { p.settings.clearNetsOnPathDelete = v })}
+            />
+          </div>
+
+          <div className="settings-row">
+            <span className="settings-label">
+              {t('Standart şema sembolleri')}
+              <small>{t('Pasif bileşenleri (direnç, kondansatör, diyot/LED, bobin, kristal) standart devre şeması sembolleriyle göster. Kapalıysa hepsi kutu sembolüdür. Varsayılan: açık')}</small>
+            </span>
+            <Toggle
+              checked={schematicStandardSymbols}
+              onChange={(v) => updateSettings((p) => { p.settings.schematicStandardSymbols = v })}
             />
           </div>
         </div>

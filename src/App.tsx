@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { CanvasEditor } from './editor/CanvasEditor'
 import { SchematicEditor } from './schematic/SchematicEditor'
 import { BoardEditor } from './board/BoardEditor'
+import { Board3DView } from './board/Board3DView'
 import { Toolbar } from './ui/Toolbar'
 import { ToolSettingsBar } from './ui/ToolSettingsBar'
 import { LayerPanel } from './ui/LayerPanel'
@@ -62,6 +63,7 @@ export default function App() {
           {mode === 'pcb' && <CanvasEditor />}
           {mode === 'schematic' && <SchematicEditor />}
           {mode === 'board' && <BoardEditor />}
+          {mode === 'view3d' && <Board3DView />}
           {mode === 'pcb' && <DrcPanel />}
         </main>
         <aside className="sidebar-right">

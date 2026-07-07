@@ -54,3 +54,23 @@ jobs:
         with:
           name: caya-pcb-studio-${{ matrix.target }}
           path: release/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Artifact'leri indir
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: GitHub Release oluştur
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/caya-pcb-studio-mac/*.dmg
+            artifacts/caya-pcb-studio-win/*.exe
+          generate_release_notes: true

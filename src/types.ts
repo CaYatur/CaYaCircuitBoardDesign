@@ -288,6 +288,18 @@ export interface ProjectSettings {
   connectionFollow: ConnectionFollowSettings
   /** Uygulama kapatılırken kaydedilmemiş değişiklik uyarısı göster */
   warnOnUnsavedClose: boolean
+  /**
+   * Bir tel (şema) veya iz (PCB) silindiğinde, yalnızca o yol sayesinde
+   * verilmiş net atamalarını da temizle. Kapalıysa atamalar elle kaldırılır.
+   * (Varsayılan: açık)
+   */
+  clearNetsOnPathDelete: boolean
+  /**
+   * Şemada bileşenleri standart devre şeması sembolleriyle göster (direnç
+   * zikzağı, kondansatör plakaları, diyot üçgeni vb.); kapalıysa hepsi kutu
+   * sembolüdür. (Varsayılan: açık)
+   */
+  schematicStandardSymbols: boolean
 }
 
 // ─── Şematik ──────────────────────────────────────────────────────────────
@@ -417,7 +429,9 @@ export const defaultSettings = (): ProjectSettings => ({
   autorouteResolution: 0.25,
   autorouteViaCost: 25,
   connectionFollow: defaultConnectionFollow(),
-  warnOnUnsavedClose: true
+  warnOnUnsavedClose: true,
+  clearNetsOnPathDelete: true,
+  schematicStandardSymbols: true
 })
 
 export const newProject = (name = 'Yeni Proje'): Project => ({

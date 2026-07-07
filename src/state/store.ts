@@ -23,7 +23,8 @@ import { builtinFootprints, refDesPrefix } from '../library/footprints'
 import { useUserLibrary } from './userLibrary'
 import { runDrc } from '../core/drc'
 import { autorouteAll, type AutorouteOptions } from '../core/autoroute'
-import { ensureSymbols } from '../schematic/model'
+import { ensureSymbols, pinsOnWire, schematicConnectedPins, syncSchematicNets } from '../schematic/model'
+import { padWorldPos, padWorldSize, segPointDist } from '../core/geometry'
 import { t } from '../i18n'
 
 export type DialogId =
@@ -37,7 +38,7 @@ export type DialogId =
   | 'about'
   | null
 
-export type AppMode = 'pcb' | 'schematic' | 'board'
+export type AppMode = 'pcb' | 'schematic' | 'board' | 'view3d'
 
 interface ClipboardData {
   components: ComponentInstance[]
@@ -134,6 +135,8 @@ export interface EditorState {
   addVia: (p: Point) => void
   addText: (p: Point, text: string) => void
   assignNet: (compId: string, padName: string, net: string) => void
+  /** Şematik telini sil; ayar açıksa yalnız o telin verdiği net atamalarını da temizle */
+  deleteSchematicWire: (wireId: string) => void
   /** Görsel yerleştirmeye başla (null → iptal) */
   startPlacingImage: (img: { src: string; format: 'png' | 'svg'; width: number; height: number } | null) => void
   /** Yerleştirilmekte olan görseli karta ekle */
@@ -287,7 +290,9 @@ export const useStore = create<EditorState>((set, get) => ({
           ? t('Şema modu — W: tel çiz, teller PCB netlerine senkronlanır')
           : mode === 'board'
             ? t('Kart modu — kart dış hattını ölçülü, profesyonel biçimde düzenleyin')
-            : t('PCB modu')
+            : mode === 'view3d'
+              ? t('3B görünüm — sürükle: döndür, tekerlek: yakınlaştır, sağ tık: kaydır')
+              : t('PCB modu')
     }),
 
   setTool: (tool) =>
@@ -330,11 +335,27 @@ export const useStore = create<EditorState>((set, get) => ({
   clearSelection: () => set({ selection: emptySelection() }),
 
   deleteSelection: () => {
-    const sel = get().selection
+    const { selection: sel, project, getFootprint } = get()
     const count =
       sel.componentIds.length + sel.traceIds.length + sel.viaIds.length +
       sel.textIds.length + sel.zoneIds.length + sel.imageIds.length
     if (count === 0) return
+    // Ayar açıksa: silinen izlerin yalnız kendilerinin verdiği pad net atamalarını
+    // (silme sonrası başka izle/telle desteklenmiyorsa) topla
+    const clearNets =
+      (project.settings.clearNetsOnPathDelete ?? true) && sel.traceIds.length > 0
+    const affectedPads: { componentId: string; padName: string; net: string }[] = []
+    if (clearNets) {
+      const deleted = project.traces.filter((tr) => sel.traceIds.includes(tr.id))
+      for (const tr of deleted) {
+        if (!tr.net) continue
+        for (const end of [tr.points[0], tr.points[tr.points.length - 1]]) {
+          for (const pd of padsAtPoint(project, getFootprint, end, 0.2)) {
+            if (pd.net === tr.net) affectedPads.push(pd)
+          }
+        }
+      }
+    }
     get().commit((p) => {
       p.components = p.components.filter((c) => !sel.componentIds.includes(c.id))
       p.traces = p.traces.filter((tr) => !sel.traceIds.includes(tr.id))
@@ -346,6 +367,25 @@ export const useStore = create<EditorState>((set, get) => ({
       p.schematic.symbols = p.schematic.symbols.filter(
         (s) => !sel.componentIds.includes(s.componentId)
       )
+      if (clearNets && affectedPads.length > 0) {
+        const schemPins = schematicConnectedPins(p, getFootprint)
+        for (const pd of affectedPads) {
+          const comp = p.components.find((c) => c.id === pd.componentId)
+          if (!comp || comp.padNets[pd.padName] !== pd.net) continue
+          // Şemada tel varsa dokunma (atama oradan gelir)
+          if (schemPins.has(`${pd.componentId}::${pd.padName}`)) continue
+          const fp = getFootprint(comp.footprintId)
+          const pad = fp?.pads.find((x) => x.name === pd.padName)
+          if (!pad) continue
+          const pos = padWorldPos(comp, pad)
+          // Kalan bir iz aynı netle bu pad'e değiyorsa atama korunur
+          const stillRouted = p.traces.some(
+            (tr) =>
+              tr.net === pd.net && traceTouchesPoint(tr.points, pos, 0.2)
+          )
+          if (!stillRouted) delete comp.padNets[pd.padName]
+        }
+      }
     }, t('{n} nesne silindi', { n: count }))
     set({ selection: emptySelection() })
   },
@@ -741,6 +781,29 @@ export const useStore = create<EditorState>((set, get) => ({
     }, net ? t('Net atandı: {net}', { net }) : t('Net kaldırıldı'))
   },
 
+  deleteSchematicWire: (wireId) => {
+    const { getFootprint, project } = get()
+    const wire = project.schematic.wires.find((w) => w.id === wireId)
+    if (!wire) return
+    const clear = project.settings.clearNetsOnPathDelete ?? true
+    // Silmeden ÖNCE bu tele değen pinleri topla (atamaları temizlemek için)
+    const affected = clear ? pinsOnWire(project, getFootprint, wire.points) : []
+    get().commit((p) => {
+      p.schematic.wires = p.schematic.wires.filter((w) => w.id !== wireId)
+      syncSchematicNets(p, getFootprint)
+      if (clear && affected.length > 0) {
+        // Silinen tel sonrası hâlâ bir tele bağlı olan pinlere dokunma; ötekilerin
+        // (yalnız bu telle atanmış) netini kaldır
+        const stillConnected = schematicConnectedPins(p, getFootprint)
+        for (const pin of affected) {
+          if (stillConnected.has(`${pin.componentId}::${pin.padName}`)) continue
+          const comp = p.components.find((c) => c.id === pin.componentId)
+          if (comp) delete comp.padNets[pin.padName]
+        }
+      }
+    }, t('Tel silindi'))
+  },
+
   startPlacingImage: (img) =>
     set({
       placingImage: img,
@@ -855,6 +918,39 @@ export const useStore = create<EditorState>((set, get) => ({
     }, t('Özel footprint silindi'))
   }
 }))
+
+/** Bir noktadaki (tol içinde) komponent pad'leri (MH hariç) */
+function padsAtPoint(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  pt: Point,
+  tol: number
+): { componentId: string; padName: string; net: string }[] {
+  const out: { componentId: string; padName: string; net: string }[] = []
+  for (const comp of project.components) {
+    const fp = getFootprint(comp.footprintId)
+    if (!fp) continue
+    for (const pad of fp.pads) {
+      if (pad.name.startsWith('MH')) continue
+      const pos = padWorldPos(comp, pad)
+      const { width, height } = padWorldSize(comp, pad)
+      const r = Math.max(width, height) / 2 + tol
+      if (Math.hypot(pos.x - pt.x, pos.y - pt.y) <= r) {
+        out.push({ componentId: comp.id, padName: pad.name, net: comp.padNets[pad.name] ?? '' })
+      }
+    }
+  }
+  return out
+}
+
+/** İz herhangi bir segmenti/ucuyla noktaya değiyor mu? */
+function traceTouchesPoint(points: Point[], pt: Point, tol: number): boolean {
+  if (points.length === 1) return Math.hypot(points[0].x - pt.x, points[0].y - pt.y) <= tol
+  for (let i = 0; i < points.length - 1; i++) {
+    if (segPointDist(points[i], points[i + 1], pt) <= tol) return true
+  }
+  return false
+}
 
 /** Bir sonraki boş referans numarası: R1, R2... */
 export function nextRefDes(project: Project, prefix: string): string {

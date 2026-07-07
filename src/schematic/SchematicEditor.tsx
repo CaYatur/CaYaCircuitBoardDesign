@@ -18,6 +18,7 @@ import {
   symbolToWorld,
   syncSchematicNets
 } from './model'
+import { schematicGlyph, type GlyphPrim } from './symbols'
 import { usePrompt } from '../ui/prompts'
 import { useT } from '../i18n'
 
@@ -258,6 +259,49 @@ export function SchematicEditor() {
       ctx.fill()
     }
 
+    // Standart sembol glifi çizici (yerel koordinatlar, ctx zaten çevrildi)
+    const useStd = project.settings.schematicStandardSymbols ?? true
+    const drawPrims = (prims: GlyphPrim[], stroke: string) => {
+      for (const pr of prims) {
+        ctx.strokeStyle = stroke
+        ctx.fillStyle = stroke
+        ctx.lineWidth = px(pr.k === 'plusminus' ? 1.6 : (pr.w ?? 1.7))
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        if (pr.k === 'line') {
+          ctx.beginPath()
+          ctx.moveTo(pr.x1, pr.y1)
+          ctx.lineTo(pr.x2, pr.y2)
+          ctx.stroke()
+        } else if (pr.k === 'poly') {
+          ctx.beginPath()
+          ctx.moveTo(pr.pts[0].x, pr.pts[0].y)
+          for (const p of pr.pts.slice(1)) ctx.lineTo(p.x, p.y)
+          if (pr.close) ctx.closePath()
+          if (pr.fill) ctx.fill()
+          else ctx.stroke()
+        } else if (pr.k === 'circle') {
+          ctx.beginPath()
+          ctx.arc(pr.cx, pr.cy, pr.r, 0, Math.PI * 2)
+          if (pr.fill) ctx.fill()
+          else ctx.stroke()
+        } else if (pr.k === 'arc') {
+          ctx.beginPath()
+          ctx.arc(pr.cx, pr.cy, pr.r, pr.a0, pr.a1)
+          ctx.stroke()
+        } else if (pr.k === 'plusminus') {
+          ctx.beginPath()
+          ctx.moveTo(pr.x - pr.s, pr.y)
+          ctx.lineTo(pr.x + pr.s, pr.y)
+          if (!pr.minus) {
+            ctx.moveTo(pr.x, pr.y - pr.s)
+            ctx.lineTo(pr.x, pr.y + pr.s)
+          }
+          ctx.stroke()
+        }
+      }
+    }
+
     // Semboller
     for (const sym of project.schematic.symbols) {
       const comp = project.components.find((c) => c.id === sym.componentId)
@@ -266,47 +310,70 @@ export function SchematicEditor() {
       if (!fp) continue
       const layout = symbolLayout(fp)
       const selected = selectedSymbol === comp.id
+      const glyph = useStd ? schematicGlyph(fp, layout) : { kind: 'box' as const }
+      const bodyColor = selected ? C.selection : C.symbol
 
       ctx.save()
       ctx.translate(sym.x, sym.y)
       ctx.rotate((sym.rotation * Math.PI) / 180)
 
-      // Kutu
-      ctx.strokeStyle = selected ? C.selection : C.symbol
-      ctx.lineWidth = px(selected ? 2.5 : 1.5)
-      ctx.strokeRect(layout.box.x, layout.box.y, layout.box.width, layout.box.height)
+      if (glyph.kind === 'passive') {
+        // Pin uçları (uç → iç), terminal noktası/pin adı olmadan
+        for (const pin of layout.pins) {
+          ctx.strokeStyle = bodyColor
+          ctx.lineWidth = px(1.7)
+          ctx.lineCap = 'round'
+          ctx.beginPath()
+          ctx.moveTo(pin.end.x, pin.end.y)
+          ctx.lineTo(pin.inner.x, pin.inner.y)
+          ctx.stroke()
+          const net = comp.padNets[pin.name]
+          if (net) {
+            ctx.fillStyle = C.netLabel
+            ctx.font = `${px(11)}px system-ui, sans-serif`
+            ctx.textAlign = pin.side === 'left' ? 'right' : 'left'
+            ctx.fillText(net, pin.side === 'left' ? pin.end.x - px(4) : pin.end.x + px(4), pin.end.y - px(4))
+          }
+        }
+        // Gövde glifi
+        drawPrims(glyph.prims, bodyColor)
+      } else {
+        // Kutu
+        ctx.strokeStyle = bodyColor
+        ctx.lineWidth = px(selected ? 2.5 : 1.5)
+        ctx.strokeRect(layout.box.x, layout.box.y, layout.box.width, layout.box.height)
 
-      // Pinler
-      ctx.font = `${px(11)}px system-ui, sans-serif`
-      for (const pin of layout.pins) {
-        ctx.strokeStyle = C.pin
-        ctx.lineWidth = px(1.5)
-        ctx.beginPath()
-        ctx.moveTo(pin.end.x, pin.end.y)
-        ctx.lineTo(pin.inner.x, pin.inner.y)
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.arc(pin.end.x, pin.end.y, px(2), 0, Math.PI * 2)
-        ctx.fillStyle = C.pin
-        ctx.fill()
-        // Pin adı + atanmış net
-        const comp2 = comp
-        const net = comp2.padNets[pin.name]
-        ctx.fillStyle = C.pinName
-        ctx.textAlign = pin.side === 'left' ? 'left' : 'right'
-        ctx.fillText(
-          pin.name,
-          pin.side === 'left' ? pin.inner.x + px(4) : pin.inner.x - px(4),
-          pin.inner.y + px(4)
-        )
-        if (net) {
-          ctx.fillStyle = C.netLabel
-          ctx.textAlign = pin.side === 'left' ? 'right' : 'left'
+        // Pinler
+        ctx.font = `${px(11)}px system-ui, sans-serif`
+        for (const pin of layout.pins) {
+          ctx.strokeStyle = C.pin
+          ctx.lineWidth = px(1.5)
+          ctx.beginPath()
+          ctx.moveTo(pin.end.x, pin.end.y)
+          ctx.lineTo(pin.inner.x, pin.inner.y)
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.arc(pin.end.x, pin.end.y, px(2), 0, Math.PI * 2)
+          ctx.fillStyle = C.pin
+          ctx.fill()
+          // Pin adı + atanmış net
+          const net = comp.padNets[pin.name]
+          ctx.fillStyle = C.pinName
+          ctx.textAlign = pin.side === 'left' ? 'left' : 'right'
           ctx.fillText(
-            net,
-            pin.side === 'left' ? pin.end.x - px(4) : pin.end.x + px(4),
-            pin.end.y - px(4)
+            pin.name,
+            pin.side === 'left' ? pin.inner.x + px(4) : pin.inner.x - px(4),
+            pin.inner.y + px(4)
           )
+          if (net) {
+            ctx.fillStyle = C.netLabel
+            ctx.textAlign = pin.side === 'left' ? 'right' : 'left'
+            ctx.fillText(
+              net,
+              pin.side === 'left' ? pin.end.x - px(4) : pin.end.x + px(4),
+              pin.end.y - px(4)
+            )
+          }
         }
       }
 
@@ -492,10 +559,7 @@ export function SchematicEditor() {
         case 'delete': {
           const wireId = hitWire(raw)
           if (wireId) {
-            s.commit((p) => {
-              p.schematic.wires = p.schematic.wires.filter((w) => w.id !== wireId)
-              syncSchematicNets(p, s.getFootprint)
-            }, t('Tel silindi'))
+            s.deleteSchematicWire(wireId)
             break
           }
           const compId = hitSymbol(raw)
@@ -738,18 +802,12 @@ export function SchematicEditor() {
                 }
               }, t('Tel köşe noktası silindi'))
             } else if (wire) {
-              s.commit((p) => {
-                p.schematic.wires = p.schematic.wires.filter((w) => w.id !== selectedWireVertex.wireId)
-                syncSchematicNets(p, s.getFootprint)
-              }, t('Tel silindi'))
+              s.deleteSchematicWire(selectedWireVertex.wireId)
               setSelectedWire(null)
             }
             setSelectedWireVertex(null)
           } else if (selectedWire) {
-            s.commit((p) => {
-              p.schematic.wires = p.schematic.wires.filter((w) => w.id !== selectedWire)
-              syncSchematicNets(p, s.getFootprint)
-            }, t('Tel silindi'))
+            s.deleteSchematicWire(selectedWire)
             setSelectedWire(null)
           }
           break
@@ -828,10 +886,7 @@ export function SchematicEditor() {
                     if (w) { w.points.splice(wireMenu.index, 1); syncSchematicNets(p, s.getFootprint) }
                   }, t('Tel köşe noktası silindi'))
                 } else if (wire) {
-                  s.commit((p) => {
-                    p.schematic.wires = p.schematic.wires.filter((w) => w.id !== wireMenu.wireId)
-                    syncSchematicNets(p, s.getFootprint)
-                  }, t('Tel silindi'))
+                  s.deleteSchematicWire(wireMenu.wireId)
                   setSelectedWire(null)
                 }
                 setSelectedWireVertex(null)
