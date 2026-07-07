@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { render3D, fit3DCamera, type Camera } from '../render/render3d'
+import { loadModelFromFile, pickModelFile } from '../io/model3d'
 import { useT } from '../i18n'
 
 export function Board3DView() {
@@ -16,10 +17,34 @@ export function Board3DView() {
   const [size, setSize] = useState({ w: 800, h: 600 })
   const project = useStore((s) => s.project)
   const getFootprint = useStore((s) => s.getFootprint)
+  const models = useStore((s) => s.project.models3d ?? [])
+  const addModel3D = useStore((s) => s.addModel3D)
+  const updateModel3D = useStore((s) => s.updateModel3D)
+  const removeModel3D = useStore((s) => s.removeModel3D)
+  const setStatus = useStore((s) => s.setStatus)
   const t = useT()
 
   const [showComponents, setShowComponents] = useState(true)
   const [showTraces, setShowTraces] = useState(true)
+  const [showModels, setShowModels] = useState(true)
+  const [showPanel, setShowPanel] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const importModel = async () => {
+    try {
+      const file = await pickModelFile()
+      if (!file) return
+      setBusy(true)
+      const model = await loadModelFromFile(file, project.board)
+      addModel3D(model)
+      setShowPanel(true)
+      setStatus(t('3B model içe aktarıldı: {name}', { name: model.name }))
+    } catch (err: any) {
+      setStatus(t('3B model içe aktarılamadı: {err}', { err: err?.message ?? err }))
+    } finally {
+      setBusy(false)
+    }
+  }
   const camRef = useRef<Camera>(fit3DCamera(project))
   const [, setTick] = useState(0)
   const redraw = useCallback(() => setTick((n) => n + 1), [])
@@ -64,7 +89,8 @@ export function Board3DView() {
       width: size.w,
       height: size.h,
       showComponents,
-      showTraces
+      showTraces,
+      showModels
     })
   })
 
@@ -154,10 +180,97 @@ export function Board3DView() {
           <input type="checkbox" checked={showTraces} onChange={(e) => { setShowTraces(e.target.checked); redraw() }} />
           {t('İzler')}
         </label>
+        {models.length > 0 && (
+          <label className="board-check">
+            <input type="checkbox" checked={showModels} onChange={(e) => { setShowModels(e.target.checked); redraw() }} />
+            {t('Modeller')}
+          </label>
+        )}
+        <span className="board-sep" />
+        <button disabled={busy} onClick={importModel} title={t('OBJ/STL 3B model içe aktar')}>
+          ＋ {t('3D Model')}
+        </button>
+        {models.length > 0 && (
+          <button className={showPanel ? 'active' : ''} onClick={() => setShowPanel((v) => !v)}>
+            ⚙ {t('Modeller')} ({models.length})
+          </button>
+        )}
         <span className="board-hint">
           {t('Sürükle: döndür · Tekerlek: yakınlaştır · Sağ tık/Boşluk+sürükle: kaydır')}
         </span>
       </div>
+
+      {showPanel && models.length > 0 && (
+        <div className="model3d-panel">
+          <div className="model3d-panel-head">
+            <h4>⬢ {t('3B Modeller')}</h4>
+            <button onClick={() => setShowPanel(false)}>✕</button>
+          </div>
+          <div className="model3d-list">
+            {models.map((m) => (
+              <div key={m.id} className="model3d-item">
+                <div className="model3d-item-head">
+                  <label className="board-check">
+                    <input
+                      type="checkbox"
+                      checked={m.visible !== false}
+                      onChange={(e) => updateModel3D(m.id, { visible: e.target.checked })}
+                    />
+                    <span className="model3d-name" title={m.name}>{m.name}</span>
+                  </label>
+                  <input
+                    type="color"
+                    value={m.color}
+                    onChange={(e) => updateModel3D(m.id, { color: e.target.value })}
+                    title={t('Renk')}
+                  />
+                  <button className="model3d-del" onClick={() => removeModel3D(m.id)} title={t('Sil')}>🗑</button>
+                </div>
+                <ModelSlider label={t('Ölçek')} value={m.scale} min={0.01} max={20} step={0.01}
+                  onChange={(v) => updateModel3D(m.id, { scale: v })} />
+                <ModelSlider label={t('Dönüş (Z°)')} value={m.rotZ} min={0} max={360} step={1}
+                  onChange={(v) => updateModel3D(m.id, { rotZ: v })} />
+                <div className="model3d-xyz">
+                  <NumField label="X" value={m.x} step={0.5} onChange={(v) => updateModel3D(m.id, { x: v })} />
+                  <NumField label="Y" value={m.y} step={0.5} onChange={(v) => updateModel3D(m.id, { y: v })} />
+                  <NumField label="Z" value={m.z} step={0.5} onChange={(v) => updateModel3D(m.id, { z: v })} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="model3d-hint">{t('OBJ ve STL desteklenir. Model kartın üstüne oturur; ölçek/dönüş/konumu ayarlayın.')}</p>
+        </div>
+      )}
     </div>
+  )
+}
+
+function ModelSlider({
+  label, value, min, max, step, onChange
+}: {
+  label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void
+}) {
+  return (
+    <div className="model3d-slider">
+      <span>{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))} />
+      <input type="number" min={min} max={max} step={step} value={+value.toFixed(2)}
+        onChange={(e) => onChange(parseFloat(e.target.value) || 0)} />
+    </div>
+  )
+}
+
+function NumField({
+  label, value, step, onChange
+}: {
+  label: string; value: number; step: number; onChange: (v: number) => void
+}) {
+  return (
+    <label className="model3d-num">
+      <span>{label}</span>
+      <input type="number" step={step} value={+value.toFixed(2)}
+        onChange={(e) => onChange(parseFloat(e.target.value) || 0)} />
+    </label>
   )
 }

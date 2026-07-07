@@ -1,11 +1,22 @@
 // ─── Dosya kaydetme/açma yardımcıları ─────────────────────────────────────
-// Mümkünse File System Access API (konum seçtirir), yoksa indirme bağlantısı.
+// Masaüstü: Electron yerel diyalog (macOS'ta File System Access API kilitlenme
+// sorunu yaşanmaz). Web: File System Access API (konum seçtirir), yoksa indirme.
+
+import { native, toTransferable } from './native'
 
 export async function saveTextFile(
   filename: string,
   content: string,
   mime = 'text/plain'
 ): Promise<boolean> {
+  // Masaüstü: yerel kaydetme diyalogu (güvenilir, macOS'ta kilitlenmez)
+  const n = native()
+  if (n) {
+    const ext = filename.slice(filename.lastIndexOf('.') + 1)
+    const res = await n.exportFile({ defaultName: filename, content, ext })
+    if (res.error) throw new Error(res.error)
+    return !!res.path
+  }
   const w = window as any
   if (typeof w.showSaveFilePicker === 'function') {
     try {
@@ -129,6 +140,16 @@ export async function saveMultipleFiles(files: ExportFile[]): Promise<void> {
  * Döndürdüğü sayı yazılan dosya adedidir (0 = kullanıcı iptal etti).
  */
 export async function saveFilesToDirectory(files: ExportFile[]): Promise<number> {
+  // Masaüstü: yerel klasör seçme diyalogu (macOS'ta kilitlenmez)
+  const n = native()
+  if (n) {
+    const payload = await Promise.all(
+      files.map(async (f) => ({ name: f.name, content: await toTransferable(f.content) }))
+    )
+    const res = await n.exportToDir({ files: payload })
+    if (res.error) throw new Error(res.error)
+    return res.count ?? 0
+  }
   const w = window as any
   if (typeof w.showDirectoryPicker === 'function') {
     try {

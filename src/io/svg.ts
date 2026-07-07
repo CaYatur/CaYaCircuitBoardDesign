@@ -168,6 +168,50 @@ export function svgComposite(
   return svgDoc(w, h, parts.join('\n'))
 }
 
+/**
+ * Siyah-beyaz "kart dış hattı + yollar" çıktısı (issue 16). Kartın yalnız dış
+ * kenarı (ve iç kesimleri) ayarlanabilir kalınlıkta çizgi olarak; tüm bakır
+ * (izler + pad'ler) siyah dolu; delikler beyaz olarak içine oyulmuş şekilde.
+ */
+export function svgOutlineTraces(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined
+): string {
+  const w = project.board.width
+  const h = project.board.height
+  const strokeW = project.board.outlineWidth ?? 0.3
+  const parts: string[] = [
+    `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>`
+  ]
+
+  // Tüm bakır (izler + pad'ler) siyah dolu — her iki katman birlikte
+  const layers: CopperLayer[] = project.board.layerCount === 1 ? ['top'] : ['top', 'bottom']
+  for (const layer of layers) {
+    const geo = copperLayerGeometry(project, getFootprint, layer)
+    for (const z of geo.zones) {
+      parts.push(`<rect x="${z.x}" y="${z.y}" width="${z.width}" height="${z.height}" fill="#000000"/>`)
+    }
+    for (const item of geo.copper) parts.push(primitiveSvg(item, '#000000'))
+  }
+
+  // Kart dış hattı — yalnız dış kenar, ayarlanabilir kalınlıkta çizgi
+  const pts = outlinePoints(project)
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ') + ' Z'
+  parts.push(`<path d="${d}" fill="none" stroke="#000000" stroke-width="${strokeW.toFixed(4)}" stroke-linejoin="round"/>`)
+  for (const cut of project.board.cutouts ?? []) {
+    parts.push(`<path d="${cutoutPathD(cut)}" fill="none" stroke="#000000" stroke-width="${strokeW.toFixed(4)}"/>`)
+  }
+
+  // Delikler — beyaz oyuk (pad ortasında delik görünür), ince siyah çeper
+  for (const dr of allDrills(project, getFootprint)) {
+    parts.push(
+      `<circle cx="${dr.x}" cy="${dr.y}" r="${(dr.diameter / 2).toFixed(4)}" fill="#ffffff" stroke="#000000" stroke-width="${(strokeW * 0.5).toFixed(4)}"/>`
+    )
+  }
+
+  return svgDoc(w, h, parts.join('\n'))
+}
+
 function svgDoc(w: number, h: number, body: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">

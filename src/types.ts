@@ -28,6 +28,10 @@ export interface PadDef {
   /** Delik çapı (mm) — varsa through-hole pad */
   drill?: number
   layer: PadLayer
+  /** Pad adı etiketinin pad merkezine göre kayması (mm) — footprint editöründe
+   *  ad, gövde çizgilerine binmesin diye taşınabilir (issue 11) */
+  nameDx?: number
+  nameDy?: number
 }
 
 export interface SilkLine {
@@ -67,6 +71,9 @@ export interface Footprint {
   silk: SilkElement[]
   /** Gövde sınır kutusu (mm) — yerleşim/çakışma kontrolü için */
   body: { x: number; y: number; width: number; height: number }
+  /** Elle çizilmiş gövde/dış hat poligonu (footprint-yerel mm). Varsa footprint
+   *  editöründe yeniden düzenlenir; silk çizgileri bundan üretilir (issue 12) */
+  outline?: Point[]
   /** Kullanıcı tanımlı mı (özel footprint editörüyle oluşturulmuş) */
   custom?: boolean
 }
@@ -162,6 +169,32 @@ export interface ImageItem {
   locked?: boolean
 }
 
+/**
+ * İçe aktarılmış harici 3B model (OBJ/STL). 3B görünümde kartın üstüne
+ * yerleştirilir ve konum/ölçek/dönüş ile ayarlanır (issue 2).
+ */
+export interface Model3D {
+  id: string
+  name: string
+  /** Üçgen köşe koordinatları düz dizi (x,y,z,...) — yerel, XY merkezli, minZ=0 */
+  verts: number[]
+  /** Üçgen köşe indeksleri (i0,i1,i2,...) */
+  tris: number[]
+  /** Kart üzerinde konum (mm) */
+  x: number
+  y: number
+  /** Kart üst yüzünden yükseklik ofseti (mm) */
+  z: number
+  /** Z ekseni etrafında dönüş (derece) */
+  rotZ: number
+  /** Ölçek çarpanı */
+  scale: number
+  /** Renk (hex) */
+  color: string
+  /** Görünür mü */
+  visible: boolean
+}
+
 /** Bakır dolgu alanı (basit dikdörtgen zone) */
 export interface CopperZone {
   id: string
@@ -214,6 +247,11 @@ export interface BoardOutline {
   layerCount: 1 | 2
   /** Lehim maskesi (PCB) rengi — hex. Görünüm ve renkli dışa aktarımlarda kullanılır */
   color?: string
+  /**
+   * Kart dış hattı çizgi kalınlığı (mm). Siyah-beyaz dış hat dışa aktarımında
+   * ve editör/önizlemede kartın dış kenarı bu kalınlıkta çizilir. (Varsayılan 0.3)
+   */
+  outlineWidth?: number
 }
 
 /** Kart (lehim maskesi) renk ön ayarları */
@@ -268,11 +306,21 @@ export interface ConnectionFollowSettings {
 
 export type GridStyle = 'lines' | 'dots' | 'off'
 
+/**
+ * Pad adı etiketlerinin görünümü:
+ *  'off'        = pad adları yalnız pad içinde (yakınlaşınca) görünür
+ *  'zoomed-out' = uzaklaşınca adlar pad'in yanında hizalı gösterilir (varsayılan)
+ *  'always'     = adlar her zaman pad'in yanında hizalı gösterilir
+ */
+export type PadLabelMode = 'off' | 'zoomed-out' | 'always'
+
 export interface ProjectSettings {
   gridSize: number
   snapToGrid: boolean
   /** Izgara görünümü: çizgi ızgara (varsayılan), nokta ızgara veya kapalı */
   gridStyle: GridStyle
+  /** Pad adı etiketleri görünümü (varsayılan: uzaklaşınca pad yanında) */
+  padLabelMode: PadLabelMode
   defaultTraceWidth: number
   defaultViaDiameter: number
   defaultViaDrill: number
@@ -289,11 +337,22 @@ export interface ProjectSettings {
   /** Uygulama kapatılırken kaydedilmemiş değişiklik uyarısı göster */
   warnOnUnsavedClose: boolean
   /**
-   * Bir tel (şema) veya iz (PCB) silindiğinde, yalnızca o yol sayesinde
-   * verilmiş net atamalarını da temizle. Kapalıysa atamalar elle kaldırılır.
-   * (Varsayılan: açık)
+   * PCB tarafında bir iz silindiğinde, yalnızca o iz sayesinde verilmiş net
+   * atamalarını da temizle. Kapalıysa atamalar elle kaldırılır.
+   * (Varsayılan: KAPALI — PCB'de iz silmek net atamasını korur)
    */
-  clearNetsOnPathDelete: boolean
+  clearNetsOnPathDeletePcb: boolean
+  /**
+   * Şema tarafında bir tel silindiğinde, yalnızca o tel sayesinde verilmiş net
+   * atamalarını da temizle. (Varsayılan: AÇIK)
+   */
+  clearNetsOnPathDeleteSchematic: boolean
+  /**
+   * Şemada bir bağlantı değişince (tel eklenince/silinince/taşınınca) bir pinin
+   * neti değişirse, o pine bağlı olan ESKİ nete ait PCB izlerini de kaldır.
+   * Böylece şema ile PCB yönlendirmesi tutarlı kalır. (Varsayılan: AÇIK)
+   */
+  removePcbTracesOnSchematicChange: boolean
   /**
    * Şemada bileşenleri standart devre şeması sembolleriyle göster (direnç
    * zikzağı, kondansatör plakaları, diyot üçgeni vb.); kapalıysa hepsi kutu
@@ -337,6 +396,8 @@ export interface Project {
   zones: CopperZone[]
   /** Karta yerleştirilen görseller (logo/işaret) */
   images: ImageItem[]
+  /** 3B görünümde içe aktarılmış harici modeller (OBJ/STL) */
+  models3d?: Model3D[]
   /** Kullanıcının oluşturduğu özel footprint'ler projeyle birlikte saklanır */
   customFootprints: Footprint[]
   rules: DesignRules
@@ -421,6 +482,7 @@ export const defaultSettings = (): ProjectSettings => ({
   gridSize: 1.27,
   snapToGrid: true,
   gridStyle: 'lines',
+  padLabelMode: 'zoomed-out',
   defaultTraceWidth: 0.4,
   defaultViaDiameter: 0.8,
   defaultViaDrill: 0.4,
@@ -430,7 +492,9 @@ export const defaultSettings = (): ProjectSettings => ({
   autorouteViaCost: 25,
   connectionFollow: defaultConnectionFollow(),
   warnOnUnsavedClose: true,
-  clearNetsOnPathDelete: true,
+  clearNetsOnPathDeletePcb: false,
+  clearNetsOnPathDeleteSchematic: true,
+  removePcbTracesOnSchematicChange: true,
   schematicStandardSymbols: true
 })
 
@@ -451,7 +515,8 @@ export const newProject = (name = 'Yeni Proje'): Project => ({
       { x: 96, y: 76, drill: 3.2 }
     ],
     layerCount: 2,
-    color: DEFAULT_PCB_COLOR
+    color: DEFAULT_PCB_COLOR,
+    outlineWidth: 0.3
   },
   components: [],
   traces: [],
@@ -459,6 +524,7 @@ export const newProject = (name = 'Yeni Proje'): Project => ({
   texts: [],
   zones: [],
   images: [],
+  models3d: [],
   customFootprints: [],
   rules: defaultRules(),
   settings: defaultSettings(),

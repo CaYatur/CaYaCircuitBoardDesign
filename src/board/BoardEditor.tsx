@@ -227,7 +227,7 @@ export function BoardEditor() {
       }
       ctx.closePath()
       ctx.strokeStyle = C.edge
-      ctx.lineWidth = 2
+      ctx.lineWidth = Math.max(2, (board.outlineWidth ?? 0.3) * view.scale)
       ctx.stroke()
     }
 

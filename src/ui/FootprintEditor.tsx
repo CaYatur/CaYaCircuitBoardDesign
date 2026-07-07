@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { useUserLibrary } from '../state/userLibrary'
-import type { Footprint, PadDef, SilkElement } from '../types'
+import type { Footprint, PadDef, Point, SilkElement } from '../types'
 import { uid } from '../types'
 import { usePrompt } from './prompts'
 import { useT } from '../i18n'
@@ -68,6 +68,8 @@ export function FootprintEditor() {
   const [loadedSilk, setLoadedSilk] = useState<SilkElement[] | null>(null)
   const [loadedBody, setLoadedBody] = useState<{ w: number; h: number } | null>(null)
   const [sourceNote, setSourceNote] = useState('')
+  // Elle çizilmiş gövde/dış hat poligonu (null → dikdörtgen gövde) — issue 12
+  const [bodyOutline, setBodyOutline] = useState<Point[] | null>(null)
 
   // Hızlı üreteç durumu
   const [genRows, setGenRows] = useState(1)
@@ -84,6 +86,7 @@ export function FootprintEditor() {
     setBodyH(fp.body.height)
     setPads(structuredClone(fp.pads))
     setLoadedSilk(structuredClone(fp.silk))
+    setBodyOutline(fp.outline ? structuredClone(fp.outline) : null)
     setLoadedBody({ w: fp.body.width, h: fp.body.height })
     setSourceNote(
       asCopy
@@ -114,6 +117,7 @@ export function FootprintEditor() {
     setPads([emptyPad(1), emptyPad(2)])
     setLoadedSilk(null)
     setLoadedBody(null)
+    setBodyOutline(null)
     setSourceNote('')
   }
 
@@ -142,6 +146,7 @@ export function FootprintEditor() {
     setBodyW(Math.max(6, genCols * genPitch + 2))
     setBodyH(Math.max(6, (genRows - 1) * genRowSpacing + 4))
     setLoadedSilk(null)
+    setBodyOutline(null)
   }
 
   const save = () => {
@@ -149,12 +154,30 @@ export function FootprintEditor() {
       setStatus(t('En az bir pad gerekli'))
       return
     }
-    // Gövde boyutu değişmediyse orijinal silkscreen korunur
+    // Silkscreen: (1) elle çizilmiş dış hat varsa ondan çizgiler üret,
+    // (2) gövde boyutu değişmediyse orijinal silk korunur, (3) yoksa dikdörtgen.
+    const hasOutline = bodyOutline && bodyOutline.length >= 2
     const keepSilk =
+      !hasOutline &&
       loadedSilk &&
       loadedBody &&
       Math.abs(loadedBody.w - bodyW) < 0.01 &&
       Math.abs(loadedBody.h - bodyH) < 0.01
+    const outlineSilk: SilkElement[] = hasOutline
+      ? bodyOutline!.map((p, i) => {
+          const q = bodyOutline![(i + 1) % bodyOutline!.length]
+          return { kind: 'line', x1: p.x, y1: p.y, x2: q.x, y2: q.y, width: 0.2 } as SilkElement
+        })
+      : []
+    // Gövde sınır kutusu: dış hat varsa ondan hesapla
+    const body = hasOutline
+      ? (() => {
+          const xs = bodyOutline!.map((p) => p.x)
+          const ys = bodyOutline!.map((p) => p.y)
+          const minX = Math.min(...xs), minY = Math.min(...ys)
+          return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY }
+        })()
+      : { x: -bodyW / 2, y: -bodyH / 2, width: bodyW, height: bodyH }
     const fp: Footprint = {
       id: editingId ?? uid('fp-'),
       name: name.trim() || t('İsimsiz'),
@@ -164,7 +187,9 @@ export function FootprintEditor() {
         ...p,
         ...(p.layer === 'both' ? {} : { drill: undefined })
       })),
-      silk: keepSilk
+      silk: hasOutline
+        ? outlineSilk
+        : keepSilk
         ? loadedSilk!
         : [
             { kind: 'line', x1: -bodyW / 2, y1: -bodyH / 2, x2: bodyW / 2, y2: -bodyH / 2, width: 0.2 },
@@ -172,7 +197,8 @@ export function FootprintEditor() {
             { kind: 'line', x1: bodyW / 2, y1: bodyH / 2, x2: -bodyW / 2, y2: bodyH / 2, width: 0.2 },
             { kind: 'line', x1: -bodyW / 2, y1: bodyH / 2, x2: -bodyW / 2, y2: -bodyH / 2, width: 0.2 }
           ],
-      body: { x: -bodyW / 2, y: -bodyH / 2, width: bodyW, height: bodyH },
+      ...(hasOutline ? { outline: bodyOutline! } : {}),
+      body,
       custom: true
     }
     // Kullanıcı kütüphanesine kaydet (otomatik kalıcı — "Kaydet" gerektirmez)
@@ -386,7 +412,14 @@ export function FootprintEditor() {
           </div>
 
           <div className="footprint-side">
-            <FootprintPreview pads={pads} bodyW={bodyW} bodyH={bodyH} />
+            <FootprintCanvas
+              pads={pads}
+              setPads={setPads}
+              bodyW={bodyW}
+              bodyH={bodyH}
+              bodyOutline={bodyOutline}
+              setBodyOutline={setBodyOutline}
+            />
             <div className="edit-existing">
               <h4>{t('Var olanı düzenle')}</h4>
               <select
@@ -449,30 +482,73 @@ export function FootprintEditor() {
   )
 }
 
-/** Canlı önizleme */
-function FootprintPreview({
+/** Pad adı etiketinin varsayılan (yerel) konumu — pad'in üstünde */
+function defaultLabelPos(pad: PadDef): Point {
+  return { x: pad.x, y: pad.y - Math.max(pad.width, pad.height) / 2 - 0.6 }
+}
+/** Pad adı etiketinin geçerli (yerel) konumu — kayma uygulanmış */
+function labelPos(pad: PadDef): Point {
+  const d = defaultLabelPos(pad)
+  return { x: (pad.x) + (pad.nameDx ?? (d.x - pad.x)), y: pad.y + (pad.nameDy ?? (d.y - pad.y)) }
+}
+
+/**
+ * Etkileşimli footprint tuvali: pad'leri sürükle, pad adı etiketlerini taşı
+ * (issue 11), gövde dış hattını elle çiz (issue 12). Kart editörünün küçük hâli.
+ */
+function FootprintCanvas({
   pads,
+  setPads,
   bodyW,
-  bodyH
+  bodyH,
+  bodyOutline,
+  setBodyOutline
 }: {
   pads: PadDef[]
+  setPads: (updater: (ps: PadDef[]) => PadDef[]) => void
   bodyW: number
   bodyH: number
+  bodyOutline: Point[] | null
+  setBodyOutline: (o: Point[] | null) => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const t = useT()
   const W = 340
   const H = 300
+  const GRID = 0.635
+  const [tool, setTool] = useState<'move' | 'outline'>('move')
+  const [snap, setSnap] = useState(true)
+  const [draft, setDraft] = useState<Point[] | null>(null)
+  const [hover, setHover] = useState<Point | null>(null)
+  const dragRef = useRef<{ kind: 'pad' | 'label' | 'vertex'; index: number } | null>(null)
+  const shiftRef = useRef(false)
 
   const extent = useMemo(() => {
     let maxX = bodyW / 2
     let maxY = bodyH / 2
-    for (const p of pads) {
-      maxX = Math.max(maxX, Math.abs(p.x) + p.width / 2)
-      maxY = Math.max(maxY, Math.abs(p.y) + p.height / 2)
+    const consider = (x: number, y: number) => {
+      maxX = Math.max(maxX, Math.abs(x))
+      maxY = Math.max(maxY, Math.abs(y))
     }
+    for (const p of pads) {
+      consider(Math.abs(p.x) + p.width / 2, Math.abs(p.y) + p.height / 2)
+      const lp = labelPos(p)
+      consider(lp.x, lp.y)
+    }
+    for (const p of bodyOutline ?? []) consider(p.x, p.y)
+    for (const p of draft ?? []) consider(p.x, p.y)
     return { maxX: maxX + 2, maxY: maxY + 2 }
-  }, [pads, bodyW, bodyH])
+  }, [pads, bodyW, bodyH, bodyOutline, draft])
+
+  const scale = Math.min(W / (extent.maxX * 2), H / (extent.maxY * 2))
+  const toLocal = (sx: number, sy: number): Point => ({
+    x: (sx - W / 2) / scale,
+    y: (sy - H / 2) / scale
+  })
+  const snapLocal = (p: Point): Point =>
+    snap && !shiftRef.current
+      ? { x: Math.round(p.x / GRID) * GRID, y: Math.round(p.y / GRID) * GRID }
+      : { x: +p.x.toFixed(3), y: +p.y.toFixed(3) }
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -482,26 +558,53 @@ function FootprintPreview({
     canvas.width = W * dpr
     canvas.height = H * dpr
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
     ctx.fillStyle = '#14171c'
     ctx.fillRect(0, 0, W, H)
-    const scale = Math.min(W / (extent.maxX * 2), H / (extent.maxY * 2))
     ctx.save()
     ctx.translate(W / 2, H / 2)
     ctx.scale(scale, scale)
 
-    // Izgara (1.27 adım)
+    // Izgara
     ctx.fillStyle = 'rgba(255,255,255,0.08)'
     for (let gx = -extent.maxX; gx <= extent.maxX; gx += 1.27) {
       for (let gy = -extent.maxY; gy <= extent.maxY; gy += 1.27) {
         ctx.fillRect(gx - 0.05, gy - 0.05, 0.1, 0.1)
       }
     }
+    // Merkez ekseni
+    ctx.strokeStyle = 'rgba(143,214,255,0.25)'
+    ctx.lineWidth = 0.06
+    ctx.beginPath(); ctx.moveTo(-extent.maxX, 0); ctx.lineTo(extent.maxX, 0)
+    ctx.moveTo(0, -extent.maxY); ctx.lineTo(0, extent.maxY); ctx.stroke()
 
-    // Gövde
+    // Gövde: elle dış hat varsa onu, yoksa dikdörtgen
     ctx.strokeStyle = '#e8e8e8'
     ctx.lineWidth = 0.2
-    ctx.strokeRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH)
+    ctx.lineJoin = 'round'
+    if (bodyOutline && bodyOutline.length >= 2) {
+      ctx.beginPath()
+      ctx.moveTo(bodyOutline[0].x, bodyOutline[0].y)
+      for (const p of bodyOutline.slice(1)) ctx.lineTo(p.x, p.y)
+      ctx.closePath(); ctx.stroke()
+      // köşeler
+      ctx.fillStyle = '#8fd6ff'
+      for (const p of bodyOutline) { ctx.beginPath(); ctx.arc(p.x, p.y, 0.35, 0, Math.PI * 2); ctx.fill() }
+    } else {
+      ctx.strokeRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH)
+    }
+
+    // Çizilmekte olan dış hat taslağı
+    if (draft && draft.length > 0) {
+      ctx.strokeStyle = '#ffd166'
+      ctx.lineWidth = 0.15
+      ctx.beginPath()
+      ctx.moveTo(draft[0].x, draft[0].y)
+      for (const p of draft.slice(1)) ctx.lineTo(p.x, p.y)
+      if (hover) ctx.lineTo(hover.x, hover.y)
+      ctx.stroke()
+      ctx.fillStyle = '#ffd166'
+      for (const p of draft) { ctx.beginPath(); ctx.arc(p.x, p.y, 0.3, 0, Math.PI * 2); ctx.fill() }
+    }
 
     // Pad'ler
     for (const pad of pads) {
@@ -512,7 +615,6 @@ function FootprintPreview({
         ctx.arc(pad.x, pad.y, Math.max(pad.width, pad.height) / 2, 0, Math.PI * 2)
         ctx.fill()
       } else if (pad.shape === 'oval') {
-        // Stadyum (yuvarlatılmış uçlu) — kareden farklı görünür
         const r = Math.min(pad.width, pad.height) / 2
         const x = pad.x - pad.width / 2
         const y = pad.y - pad.height / 2
@@ -533,24 +635,157 @@ function FootprintPreview({
         ctx.arc(pad.x, pad.y, pad.drill / 2, 0, Math.PI * 2)
         ctx.fill()
       }
-      // Pad adı
+      // Pad adı — taşınabilir etiket (bağlantı çizgisiyle)
+      const lp = labelPos(pad)
+      if (Math.hypot(lp.x - pad.x, lp.y - pad.y) > Math.max(pad.width, pad.height) / 2 + 0.3) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'
+        ctx.lineWidth = 0.05
+        ctx.beginPath(); ctx.moveTo(pad.x, pad.y); ctx.lineTo(lp.x, lp.y); ctx.stroke()
+      }
       ctx.fillStyle = '#fff'
       ctx.font = '1px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText(pad.name, pad.x, pad.y - Math.max(pad.width, pad.height) / 2 - 0.3)
+      ctx.textBaseline = 'middle'
+      ctx.fillText(pad.name, lp.x, lp.y)
     }
     ctx.restore()
 
-    // Ölçek bilgisi
     ctx.fillStyle = 'rgba(255,255,255,0.5)'
     ctx.font = '11px system-ui'
     ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
     ctx.fillText(
       `${t('Önizleme')} — ${(extent.maxX * 2).toFixed(1)} × ${(extent.maxY * 2).toFixed(1)} mm`,
       8,
       H - 8
     )
-  }, [pads, bodyW, bodyH, extent, t])
+  }, [pads, bodyW, bodyH, bodyOutline, draft, hover, extent, scale, t])
 
-  return <canvas ref={canvasRef} style={{ width: W, height: H }} className="footprint-preview" />
+  const labelHalf = (pad: PadDef) => ({
+    w: Math.max(0.9, pad.name.length * 0.35),
+    h: 0.7
+  })
+
+  const onDown = (e: React.MouseEvent) => {
+    shiftRef.current = e.shiftKey
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const loc = toLocal(e.clientX - rect.left, e.clientY - rect.top)
+    if (tool === 'outline') {
+      const sp = snapLocal(loc)
+      setDraft((d) => (d ? [...d, sp] : [sp]))
+      return
+    }
+    // move: önce etiket, sonra pad, sonra dış hat köşesi
+    for (let i = pads.length - 1; i >= 0; i--) {
+      const lp = labelPos(pads[i])
+      const lh = labelHalf(pads[i])
+      if (Math.abs(loc.x - lp.x) <= lh.w && Math.abs(loc.y - lp.y) <= lh.h) {
+        dragRef.current = { kind: 'label', index: i }
+        return
+      }
+    }
+    for (let i = pads.length - 1; i >= 0; i--) {
+      const pad = pads[i]
+      const r = Math.max(pad.width, pad.height) / 2 + 0.3
+      if (Math.abs(loc.x - pad.x) <= r && Math.abs(loc.y - pad.y) <= r) {
+        dragRef.current = { kind: 'pad', index: i }
+        return
+      }
+    }
+    if (bodyOutline) {
+      for (let i = 0; i < bodyOutline.length; i++) {
+        if (Math.hypot(bodyOutline[i].x - loc.x, bodyOutline[i].y - loc.y) <= 0.6) {
+          dragRef.current = { kind: 'vertex', index: i }
+          return
+        }
+      }
+    }
+  }
+
+  const onMove = (e: React.MouseEvent) => {
+    shiftRef.current = e.shiftKey
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const loc = toLocal(e.clientX - rect.left, e.clientY - rect.top)
+    if (tool === 'outline' && draft) {
+      setHover(snapLocal(loc))
+      return
+    }
+    const drag = dragRef.current
+    if (!drag) return
+    const sp = snapLocal(loc)
+    if (drag.kind === 'pad') {
+      setPads((ps) => ps.map((p, j) => (j === drag.index ? { ...p, x: sp.x, y: sp.y } : p)))
+    } else if (drag.kind === 'label') {
+      setPads((ps) =>
+        ps.map((p, j) =>
+          j === drag.index ? { ...p, nameDx: +(sp.x - p.x).toFixed(3), nameDy: +(sp.y - p.y).toFixed(3) } : p
+        )
+      )
+    } else if (drag.kind === 'vertex' && bodyOutline) {
+      const next = bodyOutline.map((p, j) => (j === drag.index ? sp : p))
+      setBodyOutline(next)
+    }
+  }
+
+  const onUp = () => { dragRef.current = null }
+
+  const finishOutline = () => {
+    if (draft && draft.length >= 3) {
+      setBodyOutline(draft)
+      setDraft(null)
+      setHover(null)
+      setTool('move')
+    }
+  }
+
+  return (
+    <div>
+      <div className="fp-canvas-tools">
+        <button
+          type="button"
+          className={tool === 'move' ? 'active' : ''}
+          onClick={() => { setTool('move'); setDraft(null); setHover(null) }}
+          title={t('Pad ve etiketleri taşı')}
+        >
+          ✥ {t('Taşı')}
+        </button>
+        <button
+          type="button"
+          className={tool === 'outline' ? 'active' : ''}
+          onClick={() => { setTool('outline'); setDraft([]) }}
+          title={t('Gövde dış hattını köşe köşe çiz — çift tık ile bitir')}
+        >
+          ✎ {t('Dış hat çiz')}
+        </button>
+        {tool === 'outline' && (
+          <button type="button" onClick={finishOutline} disabled={!draft || draft.length < 3}>
+            ✓ {t('Bitir')}
+          </button>
+        )}
+        {bodyOutline && (
+          <button type="button" className="btn-danger-outline" onClick={() => setBodyOutline(null)} title={t('Dikdörtgen gövdeye dön')}>
+            🗑 {t('Dış hattı sil')}
+          </button>
+        )}
+        <label className="fp-snap-toggle" title={t('Izgaraya yasla (Shift: serbest)')}>
+          <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> {t('Izgara')}
+        </label>
+      </div>
+      <canvas
+        ref={canvasRef}
+        style={{ width: W, height: H, cursor: tool === 'outline' ? 'crosshair' : 'default' }}
+        className="footprint-preview"
+        onMouseDown={onDown}
+        onMouseMove={onMove}
+        onMouseUp={onUp}
+        onMouseLeave={onUp}
+        onDoubleClick={finishOutline}
+      />
+      <div className="fp-canvas-hint">
+        {tool === 'outline'
+          ? t('Köşe eklemek için tıklayın · çift tık/Bitir ile kapatın')
+          : t('Pad\'i veya adını sürükleyerek taşıyın (adlar çizgilere binmesin)')}
+      </div>
+    </div>
+  )
 }

@@ -60,6 +60,10 @@ export function CanvasEditor() {
   >(null)
   const shiftHeld = useRef(false)
   const [imageEpoch, setImageEpoch] = useState(0) // görsel yüklenince yeniden çiz
+  // ── Tek pin net atama popover'ı (net aracıyla pad'e tıklayınca) ──
+  const [netPopover, setNetPopover] = useState<
+    { compId: string; padName: string; x: number; y: number } | null
+  >(null)
 
   const project = useStore((s) => s.project)
   const selection = useStore((s) => s.selection)
@@ -439,17 +443,15 @@ export function CanvasEditor() {
         case 'net': {
           const pad = findPadAt(s.project, s.getFootprint, raw, tolWorld * 1.5)
           if (pad) {
-            const comp = s.project.components.find((c) => c.id === pad.componentId)
-            const name = await ask(
-              tr('Net adı — {ref} pad {pad}', {
-                ref: comp?.refDes ?? '',
-                pad: pad.padName
-              }),
-              pad.net || suggestNetName(pad.padName),
-              tr('Örn: VCC, GND, SIG1')
-            )
-            if (name !== null) s.assignNet(pad.componentId, pad.padName, name.trim())
+            // Yalnız tıklanan pini kolayca değiştirmek için küçük popover aç
+            setNetPopover({
+              compId: pad.componentId,
+              padName: pad.padName,
+              x: e.clientX,
+              y: e.clientY
+            })
           } else {
+            setNetPopover(null)
             s.setStatus(tr('Net atamak için bir pad\'e tıklayın'))
           }
           break
@@ -993,6 +995,25 @@ export function CanvasEditor() {
         onContextMenu={(e) => e.preventDefault()}
       />
       <CursorReadout mouseWorld={mouseWorld} airwireCount={analysis.airwires.length} shortCount={analysis.shorts.length} />
+      {netPopover && (() => {
+        const comp = project.components.find((c) => c.id === netPopover.compId)
+        if (!comp) return null
+        return (
+          <NetPopover
+            x={netPopover.x}
+            y={netPopover.y}
+            refDes={comp.refDes}
+            padName={netPopover.padName}
+            current={comp.padNets[netPopover.padName] ?? ''}
+            suggest={suggestNetName(netPopover.padName)}
+            onApply={(net) => {
+              store.getState().assignNet(netPopover.compId, netPopover.padName, net.trim())
+              setNetPopover(null)
+            }}
+            onClose={() => setNetPopover(null)}
+          />
+        )
+      })()}
       {vertexMenu && (
         <VertexContextMenu
           menu={vertexMenu}
@@ -1014,6 +1035,81 @@ export function CanvasEditor() {
         />
       )}
     </div>
+  )
+}
+
+/** Tek pin için hızlı net atama popover'ı (net aracı) */
+function NetPopover({
+  x,
+  y,
+  refDes,
+  padName,
+  current,
+  suggest,
+  onApply,
+  onClose
+}: {
+  x: number
+  y: number
+  refDes: string
+  padName: string
+  current: string
+  suggest: string
+  onApply: (net: string) => void
+  onClose: () => void
+}) {
+  const t = useT()
+  const [value, setValue] = useState(current || suggest)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+  const QUICK = ['GND', 'VCC', '5V', '3V3', '12V', 'VIN']
+  const left = Math.min(x, window.innerWidth - 260)
+  const top = Math.min(y, window.innerHeight - 190)
+  return (
+    <>
+      <div className="context-menu-backdrop" onMouseDown={onClose} />
+      <div
+        className="net-popover"
+        style={{ position: 'fixed', left, top, zIndex: 160 }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="net-popover-title">
+          ⚡ {refDes} · {t('pad')} {padName}
+        </div>
+        <input
+          ref={inputRef}
+          value={value}
+          placeholder={t('atanmamış')}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation()
+            if (e.key === 'Enter') onApply(value)
+            else if (e.key === 'Escape') onClose()
+          }}
+        />
+        <div className="net-popover-quick">
+          {QUICK.map((n) => (
+            <button key={n} onClick={() => onApply(n)}>
+              {n}
+            </button>
+          ))}
+          <button className="net-popover-clear" onClick={() => onApply('')}>
+            {t('Temizle')}
+          </button>
+        </div>
+        <div className="net-popover-actions">
+          <button className="btn-secondary" onClick={onClose}>
+            {t('İptal')}
+          </button>
+          <button className="btn-primary" onClick={() => onApply(value)}>
+            ✓ {t('Uygula')}
+          </button>
+        </div>
+      </div>
+    </>
   )
 }
 

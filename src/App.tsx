@@ -19,9 +19,12 @@ import { BoardSettingsDialog } from './ui/BoardSettingsDialog'
 import { SettingsDialog } from './ui/SettingsDialog'
 import { AutorouteDialog } from './ui/AutorouteDialog'
 import { PinEditorDialog } from './ui/PinEditorDialog'
+import { HomeScreen } from './ui/HomeScreen'
 import { PromptModal } from './ui/prompts'
 import { useStore } from './state/store'
 import { useUserLibrary } from './state/userLibrary'
+import { useRecents } from './state/recents'
+import { saveProjectFile } from './io/project'
 import { t } from './i18n'
 
 export default function App() {
@@ -32,6 +35,31 @@ export default function App() {
   // Kullanıcı komponent kütüphanesini bir kez yükle (otomatik kalıcı)
   useEffect(() => {
     if (!useUserLibrary.getState().loaded) useUserLibrary.getState().load()
+    useRecents.getState().refresh()
+  }, [])
+
+  // Masaüstü kapatma diyalogundaki "Kaydet ve Çık" için köprü: kaydeder ve
+  // başarı durumunda true döner (Electron main süreci bunu bekler).
+  useEffect(() => {
+    ;(window as any).__cayaRequestSave = async (): Promise<boolean> => {
+      try {
+        const st = useStore.getState()
+        const res = await saveProjectFile(st.project, { path: st.currentProjectPath })
+        if (res) {
+          st.markSaved()
+          st.setProjectPath(res.path)
+          if (!res.path) useRecents.getState().addWeb(st.project.name, JSON.stringify(st.project))
+          ;(window as any).__cayaDirty = false
+          return true
+        }
+        return false
+      } catch {
+        return false
+      }
+    }
+    return () => {
+      delete (window as any).__cayaRequestSave
+    }
   }, [])
 
   // Kaydedilmemiş değişiklik varken kapatmaya karşı uyarı.
@@ -82,6 +110,7 @@ export default function App() {
       <AutorouteDialog />
       <PinEditorDialog />
       <PromptModal />
+      <HomeScreen />
     </div>
   )
 }

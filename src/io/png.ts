@@ -12,6 +12,7 @@ import {
 import { rasterizeCopper } from './rasterize'
 import { downloadBlob } from './files'
 import { outlinePoints } from './exportGeometry'
+import { cutoutOutlinePoints } from '../core/boardGeometry'
 
 /** Bir data URL görselini <img> olarak yükler (dışa aktarımda çizmek için) */
 function loadImageEl(src: string): Promise<HTMLImageElement | null> {
@@ -137,6 +138,77 @@ export async function compositePngBlob(
     ctx.beginPath()
     ctx.arc(d.x, d.y, d.diameter / 2, 0, Math.PI * 2)
     ctx.fill()
+  }
+
+  return new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+}
+
+/** Siyah-beyaz "kart dış hattı + yollar" PNG'sini indir (issue 16) */
+export async function exportOutlineTracesPng(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  pxPerMm = 24
+): Promise<void> {
+  const blob = await outlineTracesPngBlob(project, getFootprint, pxPerMm)
+  if (blob) downloadBlob(`${project.name}-dishat-yollar.png`, blob)
+}
+
+/** Siyah-beyaz kart dış hattı + yollar PNG'sini blob olarak döndür */
+export async function outlineTracesPngBlob(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  pxPerMm = 24
+): Promise<Blob | null> {
+  const w = Math.ceil(project.board.width * pxPerMm)
+  const h = Math.ceil(project.board.height * pxPerMm)
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(pxPerMm, pxPerMm)
+  const strokeW = project.board.outlineWidth ?? 0.3
+
+  // Beyaz zemin
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, project.board.width, project.board.height)
+
+  // Tüm bakır (izler + pad'ler) siyah
+  const layers: CopperLayer[] = project.board.layerCount === 1 ? ['top'] : ['top', 'bottom']
+  for (const layer of layers) {
+    const geo = copperLayerGeometry(project, getFootprint, layer)
+    ctx.fillStyle = '#000000'
+    for (const z of geo.zones) ctx.fillRect(z.x, z.y, z.width, z.height)
+    drawPrimitives(ctx, geo.copper, '#000000')
+  }
+
+  // Kart dış hattı — yalnız dış kenar, ayarlanabilir kalınlıkta çizgi
+  ctx.strokeStyle = '#000000'
+  ctx.lineJoin = 'round'
+  ctx.lineWidth = strokeW
+  const outline = outlinePoints(project)
+  ctx.beginPath()
+  ctx.moveTo(outline[0].x, outline[0].y)
+  for (const p of outline.slice(1)) ctx.lineTo(p.x, p.y)
+  ctx.closePath()
+  ctx.stroke()
+  for (const cut of project.board.cutouts ?? []) {
+    const cp = cutoutOutlinePoints(cut)
+    if (cp.length < 2) continue
+    ctx.beginPath()
+    ctx.moveTo(cp[0].x, cp[0].y)
+    for (const p of cp.slice(1)) ctx.lineTo(p.x, p.y)
+    ctx.closePath()
+    ctx.stroke()
+  }
+
+  // Delikler — beyaz oyuk + ince siyah çeper
+  for (const dr of allDrills(project, getFootprint)) {
+    ctx.beginPath()
+    ctx.arc(dr.x, dr.y, dr.diameter / 2, 0, Math.PI * 2)
+    ctx.fillStyle = '#ffffff'
+    ctx.fill()
+    ctx.lineWidth = strokeW * 0.5
+    ctx.stroke()
   }
 
   return new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))

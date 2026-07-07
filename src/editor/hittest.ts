@@ -41,6 +41,16 @@ export function hitTest(
     }
   }
 
+  // İzler — komponent gövdesinden ÖNCE denenir; böylece bir izin tam üzerine
+  // tıklandığında (iz ince bir hedef olduğundan) komponentin altında kalsa bile
+  // seçilebilir. Gövdenin iz olmayan kısımları hâlâ komponenti seçer.
+  for (let i = project.traces.length - 1; i >= 0; i--) {
+    const t = project.traces[i]
+    if (hitTrace(p, t.points, t.width, tol)) {
+      return { type: 'trace', id: t.id }
+    }
+  }
+
   // Komponent gövdeleri
   for (let i = project.components.length - 1; i >= 0; i--) {
     const comp = project.components[i]
@@ -48,14 +58,6 @@ export function hitTest(
     if (!fp) continue
     if (pointInRect(p, componentBBox(comp, fp))) {
       return { type: 'component', id: comp.id }
-    }
-  }
-
-  // İzler
-  for (let i = project.traces.length - 1; i >= 0; i--) {
-    const t = project.traces[i]
-    if (hitTrace(p, t.points, t.width, tol)) {
-      return { type: 'trace', id: t.id }
     }
   }
 

@@ -4,6 +4,7 @@
 
 import { useStore } from '../state/store'
 import type { ConnectionFollowSettings } from '../types'
+import { usePrompt } from './prompts'
 import { useT } from '../i18n'
 
 function Toggle({
@@ -26,12 +27,29 @@ export function SettingsDialog() {
   const openDialog = useStore((s) => s.openDialog)
   const cf = useStore((s) => s.project.settings.connectionFollow)
   const warnOnUnsavedClose = useStore((s) => s.project.settings.warnOnUnsavedClose)
-  const clearNetsOnPathDelete = useStore((s) => s.project.settings.clearNetsOnPathDelete ?? true)
+  const clearNetsPcb = useStore((s) => s.project.settings.clearNetsOnPathDeletePcb ?? false)
+  const clearNetsSchematic = useStore((s) => s.project.settings.clearNetsOnPathDeleteSchematic ?? true)
+  const removePcbTracesOnSchematicChange = useStore((s) => s.project.settings.removePcbTracesOnSchematicChange ?? true)
   const schematicStandardSymbols = useStore((s) => s.project.settings.schematicStandardSymbols ?? true)
+  const padLabelMode = useStore((s) => s.project.settings.padLabelMode ?? 'zoomed-out')
   const updateSettings = useStore((s) => s.updateSettings)
+  const clearAllConnections = useStore((s) => s.clearAllConnections)
+  const confirm = usePrompt((s) => s.confirm)
   const t = useT()
 
   if (activeDialog !== 'settings') return null
+
+  const doClear = async (
+    scope: 'all' | 'nets' | 'traces' | 'wires',
+    label: string
+  ) => {
+    const ok = await confirm(t('Emin misiniz?'), {
+      message: label,
+      confirmLabel: 'Temizle',
+      danger: true
+    })
+    if (ok) clearAllConnections(scope)
+  }
 
   const setCf = (patch: Partial<ConnectionFollowSettings>) =>
     updateSettings((p) => {
@@ -114,12 +132,34 @@ export function SettingsDialog() {
 
           <div className="settings-row">
             <span className="settings-label">
-              {t('Yol silinince net atamalarını temizle')}
-              <small>{t('Bir tel (şema) veya iz (PCB) silindiğinde, yalnız o yolun verdiği ve başka bağlantıyla desteklenmeyen net atamaları da kaldırılır. Varsayılan: açık')}</small>
+              {t('Şemada tel silinince net atamalarını temizle')}
+              <small>{t('Şema tarafında bir tel silindiğinde, yalnız o telin verdiği ve başka telle desteklenmeyen net atamaları da kaldırılır. Varsayılan: açık')}</small>
             </span>
             <Toggle
-              checked={clearNetsOnPathDelete}
-              onChange={(v) => updateSettings((p) => { p.settings.clearNetsOnPathDelete = v })}
+              checked={clearNetsSchematic}
+              onChange={(v) => updateSettings((p) => { p.settings.clearNetsOnPathDeleteSchematic = v })}
+            />
+          </div>
+
+          <div className="settings-row">
+            <span className="settings-label">
+              {t('PCB\'de iz silinince net atamalarını temizle')}
+              <small>{t('PCB tarafında bir iz silindiğinde, yalnız o izin verdiği ve başka izle desteklenmeyen net atamaları da kaldırılır. Varsayılan: kapalı')}</small>
+            </span>
+            <Toggle
+              checked={clearNetsPcb}
+              onChange={(v) => updateSettings((p) => { p.settings.clearNetsOnPathDeletePcb = v })}
+            />
+          </div>
+
+          <div className="settings-row">
+            <span className="settings-label">
+              {t('Şema değişince eski PCB izlerini kaldır')}
+              <small>{t('Şemada bir bağlantı değişince (tel silme/rename), o pine bağlı ESKİ nete ait PCB izleri de kaldırılır; böylece PCB yönlendirmesi şema ile tutarlı kalır. Varsayılan: açık')}</small>
+            </span>
+            <Toggle
+              checked={removePcbTracesOnSchematicChange}
+              onChange={(v) => updateSettings((p) => { p.settings.removePcbTracesOnSchematicChange = v })}
             />
           </div>
 
@@ -132,6 +172,62 @@ export function SettingsDialog() {
               checked={schematicStandardSymbols}
               onChange={(v) => updateSettings((p) => { p.settings.schematicStandardSymbols = v })}
             />
+          </div>
+
+          <div className="settings-row settings-actions-row">
+            <span className="settings-label">
+              {t('Bağlantıları temizle')}
+              <small>{t('Seçtiğiniz bağlantıları tek adımda kaldırır. Geri almak için Ctrl+Z.')}</small>
+            </span>
+            <div className="settings-action-buttons">
+              <button
+                className="btn-secondary"
+                onClick={() => doClear('traces', t('Tüm PCB izleri ve viaları silinecek.'))}
+              >
+                {t('PCB izleri')}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => doClear('nets', t('Tüm pad net atamaları temizlenecek.'))}
+              >
+                {t('Net atamaları')}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => doClear('wires', t('Tüm şema telleri silinecek.'))}
+              >
+                {t('Şema telleri')}
+              </button>
+              <button
+                className="btn-secondary btn-danger"
+                onClick={() => doClear('all', t('Tüm PCB izleri, viaları, net atamaları ve şema telleri silinecek.'))}
+              >
+                {t('Tümü')}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Görünüm ── */}
+        <div className="settings-section">
+          <h4>{t('Görünüm')}</h4>
+          <div className="settings-row">
+            <span className="settings-label">
+              {t('Pad adı etiketleri')}
+              <small>{t('Uzaklaşınca pad adları pad içinde okunmaz; bu seçenek adları pad\'in yanında hizalı ve üst üste binmeden gösterir.')}</small>
+            </span>
+            <select
+              value={padLabelMode}
+              onChange={(e) =>
+                updateSettings((p) => {
+                  p.settings.padLabelMode = e.target.value as typeof padLabelMode
+                })
+              }
+            >
+              <option value="off">{t('Kapalı (yalnız pad içi)')}</option>
+              <option value="zoomed-out">{t('Uzaklaşınca yanında (varsayılan)')}</option>
+              <option value="always">{t('Her zaman yanında')}</option>
+            </select>
           </div>
         </div>
 

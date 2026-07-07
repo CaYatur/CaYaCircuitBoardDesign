@@ -4,18 +4,53 @@
 import type { Footprint, Project } from '../types'
 import { DEFAULT_PCB_COLOR, defaultConnectionFollow, newProject } from '../types'
 import { pickTextFile, saveTextFile } from './files'
+import { native } from './native'
 import { sanitize } from './gerber'
 
-export async function saveProjectFile(project: Project): Promise<boolean> {
+/**
+ * Projeyi kaydet. Masaüstünde konum bir kez seçilince hatırlanır ve sonraki
+ * "Kaydet"ler doğrudan o yola yazar; `saveAs` ile "Farklı Kaydet".
+ * Dönüş: başarılıysa { path } (web'de path null), iptal/başarısızsa null.
+ */
+export async function saveProjectFile(
+  project: Project,
+  opts: { path?: string | null; saveAs?: boolean } = {}
+): Promise<{ path: string | null } | null> {
   const content = JSON.stringify(project, null, 2)
-  return saveTextFile(`${sanitize(project.name)}.cayapcb`, content, 'application/json')
+  const n = native()
+  if (n) {
+    const res = await n.saveProject({
+      path: opts.path ?? undefined,
+      defaultName: `${sanitize(project.name)}.cayapcb`,
+      content,
+      saveAs: opts.saveAs
+    })
+    if (res.error) throw new Error(res.error)
+    if (res.canceled || !res.path) return null
+    return { path: res.path }
+  }
+  // Web: konum/indirme (yol hatırlanamaz)
+  const ok = await saveTextFile(`${sanitize(project.name)}.cayapcb`, content, 'application/json')
+  return ok ? { path: null } : null
 }
 
-export async function openProjectFile(): Promise<Project | null> {
+/**
+ * Proje aç. `path` verilirse (son kullanılanlardan) doğrudan okur; yoksa diyalog.
+ * Dönüş: { project, path } veya iptal/başarısızsa null.
+ */
+export async function openProjectFile(
+  opts: { path?: string } = {}
+): Promise<{ project: Project; path: string | null } | null> {
+  const n = native()
+  if (n) {
+    const res = await n.openProject({ path: opts.path })
+    if (res.error) throw new Error(res.error)
+    if (res.canceled || !res.content) return null
+    return { project: validateProject(JSON.parse(res.content)), path: res.path ?? null }
+  }
   const file = await pickTextFile('.cayapcb,.json')
   if (!file) return null
-  const parsed = JSON.parse(file.content)
-  return validateProject(parsed)
+  return { project: validateProject(JSON.parse(file.content)), path: null }
 }
 
 /** Eksik alanları varsayılanlarla tamamlayarak projeyi doğrula */
@@ -37,6 +72,7 @@ export function validateProject(raw: any): Project {
     texts: Array.isArray(raw.texts) ? raw.texts : [],
     zones: Array.isArray(raw.zones) ? raw.zones : [],
     images: Array.isArray(raw.images) ? raw.images : [],
+    models3d: Array.isArray(raw.models3d) ? raw.models3d : [],
     customFootprints: Array.isArray(raw.customFootprints) ? raw.customFootprints : [],
     schematic: {
       symbols: Array.isArray(raw.schematic?.symbols) ? raw.schematic.symbols : [],
@@ -51,6 +87,10 @@ export function validateProject(raw: any): Project {
   if (typeof project.board.color !== 'string') {
     project.board.color = DEFAULT_PCB_COLOR
   }
+  // Kart dış hattı çizgi kalınlığı yoksa varsayılan
+  if (typeof project.board.outlineWidth !== 'number' || project.board.outlineWidth <= 0) {
+    project.board.outlineWidth = 0.3
+  }
   // Bağlantı takibi ayarı yoksa varsayılanlarla tamamla (kısmi objeleri de birleştir)
   project.settings.connectionFollow = {
     ...defaultConnectionFollow(),
@@ -59,6 +99,23 @@ export function validateProject(raw: any): Project {
   if (typeof project.settings.warnOnUnsavedClose !== 'boolean') {
     project.settings.warnOnUnsavedClose = true
   }
+  // Eski tek "clearNetsOnPathDelete" ayarını yeni iki ayrı ayara göç ettir:
+  // şema tarafı eski değeri (yoksa açık), PCB tarafı ise yeni varsayılan (kapalı).
+  const legacyClear = (raw.settings as any)?.clearNetsOnPathDelete
+  if (typeof project.settings.clearNetsOnPathDeleteSchematic !== 'boolean') {
+    project.settings.clearNetsOnPathDeleteSchematic =
+      typeof legacyClear === 'boolean' ? legacyClear : true
+  }
+  if (typeof project.settings.clearNetsOnPathDeletePcb !== 'boolean') {
+    project.settings.clearNetsOnPathDeletePcb = false
+  }
+  if (typeof project.settings.removePcbTracesOnSchematicChange !== 'boolean') {
+    project.settings.removePcbTracesOnSchematicChange = true
+  }
+  if (!['off', 'zoomed-out', 'always'].includes(project.settings.padLabelMode)) {
+    project.settings.padLabelMode = 'zoomed-out'
+  }
+  delete (project.settings as any).clearNetsOnPathDelete
   // Komponentlerin padNets alanı olduğundan emin ol
   for (const c of project.components) {
     if (!c.padNets || typeof c.padNets !== 'object') c.padNets = {}
@@ -126,9 +183,14 @@ export function validateFootprint(raw: any): Footprint {
       width: Number(p.width) || 1,
       height: Number(p.height) || 1,
       ...(p.drill ? { drill: Number(p.drill) } : {}),
-      layer: ['top', 'bottom', 'both'].includes(p.layer) ? p.layer : 'both'
+      layer: ['top', 'bottom', 'both'].includes(p.layer) ? p.layer : 'both',
+      ...(Number.isFinite(p.nameDx) ? { nameDx: Number(p.nameDx) } : {}),
+      ...(Number.isFinite(p.nameDy) ? { nameDy: Number(p.nameDy) } : {})
     })),
     silk: Array.isArray(raw.silk) ? raw.silk : [],
+    ...(Array.isArray(raw.outline)
+      ? { outline: raw.outline.map((p: any) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 })) }
+      : {}),
     body: {
       x: Number(raw.body?.x) || -5,
       y: Number(raw.body?.y) || -5,

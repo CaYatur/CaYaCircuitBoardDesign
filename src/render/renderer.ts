@@ -201,20 +201,31 @@ export function render(ctx: CanvasRenderingContext2D, s: RenderState): void {
   // ── Görseller (logo/işaret) ──
   drawImages(ctx, s)
 
-  // ── Pad adları ve net etiketleri (yakınlaştırınca) ──
-  if (view.scale >= 13) drawPadLabels(ctx, s)
+  // ── Pad adları ve net etiketleri ──
+  // 'off'        : yalnız pad içi (yakınlaşınca)
+  // 'zoomed-out' : yakınlaşınca pad içi, uzaklaşınca pad yanında (varsayılan)
+  // 'always'     : her zaman pad yanında (hizalı, üst üste binmez)
+  {
+    const mode = project.settings.padLabelMode ?? 'zoomed-out'
+    const showOnPad = view.scale >= 13 && mode !== 'always'
+    const showOutside = mode === 'always' || (mode === 'zoomed-out' && view.scale < 13)
+    if (showOnPad) drawPadLabels(ctx, s)
+    if (showOutside) drawPadLabelsOutside(ctx, s)
+  }
 
   // ── Kart dış hattı ve montaj delikleri ──
   if (s.visibleLayers.outline) {
+    // Kart dış hattı çizgi kalınlığı (mm → px), ayardan; okunur bir taban değerle
+    const edgePx = Math.max(1.2, (project.board.outlineWidth ?? 0.3) * view.scale)
     ctx.beginPath()
     boardOutlinePath(ctx, view, project)
     ctx.strokeStyle = COLORS.boardEdge
-    ctx.lineWidth = 1.5
+    ctx.lineWidth = edgePx
     ctx.stroke()
     // İç kesim sınırları
     if (cutouts && cutouts.length > 0) {
       ctx.strokeStyle = COLORS.boardEdge
-      ctx.lineWidth = 1.2
+      ctx.lineWidth = Math.max(1, edgePx * 0.85)
       for (const cut of cutouts) {
         const pts = cutoutOutlinePoints(cut)
         if (pts.length < 2) continue
@@ -857,6 +868,64 @@ function drawPadLabels(ctx: CanvasRenderingContext2D, s: RenderState) {
         ctx.fillStyle = COLORS.ratsnest
         ctx.fillText(net, pos.x, pos.y + (height / 2) * view.scale + fontPx * 0.7)
       }
+    }
+  }
+  ctx.textBaseline = 'alphabetic'
+  ctx.textAlign = 'left'
+}
+
+/**
+ * Pad adlarını pad'in DIŞINA, komponent merkezinden dışa doğru hizalı yerleştirir.
+ * Adlar birbirinin/başka etiketlerin üstüne binmez (aç-gözlü çakışma önleme).
+ * Uzaklaşınca pad içindeki adlar okunmadığında kullanılır (issue 13).
+ */
+function drawPadLabelsOutside(ctx: CanvasRenderingContext2D, s: RenderState) {
+  const { view, project } = s
+  const fontPx = Math.min(12, Math.max(8, view.scale * 0.9))
+  ctx.font = `${fontPx}px system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const drawn: { x: number; y: number; w: number; h: number }[] = []
+  const overlaps = (r: { x: number; y: number; w: number; h: number }) =>
+    drawn.some(
+      (d) =>
+        Math.abs(d.x - r.x) * 2 < d.w + r.w + 2 &&
+        Math.abs(d.y - r.y) * 2 < d.h + r.h + 2
+    )
+
+  for (const comp of project.components) {
+    if (comp.side === 'top' && !s.visibleLayers.top && !s.visibleLayers['top-silk']) continue
+    if (comp.side === 'bottom' && !s.visibleLayers.bottom && !s.visibleLayers['bottom-silk']) continue
+    const fp = s.getFootprint(comp.footprintId)
+    if (!fp) continue
+    const bb = componentBBox(comp, fp)
+    const center = worldToScreen(view, { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 })
+    for (const pad of fp.pads) {
+      if (pad.name.startsWith('MH')) continue
+      const pos = worldToScreen(view, padWorldPos(comp, pad))
+      const size = padWorldSize(comp, pad)
+      const padHalf = (Math.max(size.width, size.height) / 2) * view.scale
+      // Yön: pad'den komponent merkezine ters (dışa doğru)
+      let dx = pos.x - center.x
+      let dy = pos.y - center.y
+      const len = Math.hypot(dx, dy)
+      if (len < 0.001) { dx = 0; dy = -1 } else { dx /= len; dy /= len }
+      const w = ctx.measureText(pad.name).width + 6
+      const h = fontPx + 4
+      // Pad'in hemen dışına yerleştir; çakışırsa biraz daha dışarı it, olmazsa atla
+      let placed: { x: number; y: number; w: number; h: number } | null = null
+      for (let step = 0; step < 4; step++) {
+        const gap =
+          padHalf + 4 + step * (h * 0.95) + (Math.abs(dx) >= Math.abs(dy) ? w / 2 : h / 2)
+        const rect = { x: pos.x + dx * gap, y: pos.y + dy * gap, w, h }
+        if (!overlaps(rect)) { placed = rect; break }
+      }
+      if (!placed) continue
+      ctx.fillStyle = 'rgba(0,0,0,0.62)'
+      ctx.fillRect(placed.x - w / 2, placed.y - h / 2, w, h)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(pad.name, placed.x, placed.y)
+      drawn.push(placed)
     }
   }
   ctx.textBaseline = 'alphabetic'

@@ -14,6 +14,7 @@ const formFromProject = (project: Project) => ({
   cornerRadius: project.board.cornerRadius,
   layerCount: project.board.layerCount,
   color: project.board.color || DEFAULT_PCB_COLOR,
+  outlineWidth: project.board.outlineWidth ?? 0.3,
   mountingHoles: project.board.mountingHoles.length > 0,
   holeDrill: project.board.mountingHoles[0]?.drill ?? 3.2,
   ...project.rules,
@@ -65,6 +66,7 @@ export function BoardSettingsDialog() {
       }
       p.board.cornerRadius = Math.max(0, Number(form.cornerRadius))
       p.board.color = String(form.color) || DEFAULT_PCB_COLOR
+      p.board.outlineWidth = Math.max(0.05, Number(form.outlineWidth) || 0.3)
       p.board.layerCount = form.layerCount === 1 ? 1 : 2
       if (p.board.layerCount === 1) {
         // Tek katmana geçişte alt yüzdeki komponentleri üste taşı
@@ -168,6 +170,7 @@ export function BoardSettingsDialog() {
             {form.shape === 'rect' && (
               <F label={t('Köşe yuvarlatma')} k="cornerRadius" step={0.5} />
             )}
+            <F label={t('Dış hat çizgi kalınlığı (mm)')} k="outlineWidth" step={0.05} />
             <button
               type="button"
               className="btn-secondary"

@@ -23,7 +23,7 @@ import { builtinFootprints, refDesPrefix } from '../library/footprints'
 import { useUserLibrary } from './userLibrary'
 import { runDrc } from '../core/drc'
 import { autorouteAll, type AutorouteOptions } from '../core/autoroute'
-import { ensureSymbols, pinsOnWire, schematicConnectedPins, syncSchematicNets } from '../schematic/model'
+import { ensureSymbols, pinsOnWire, removeStalePcbTraces, schematicConnectedPins, snapshotPadNets, syncSchematicNets } from '../schematic/model'
 import { padWorldPos, padWorldSize, segPointDist } from '../core/geometry'
 import { t } from '../i18n'
 
@@ -81,6 +81,10 @@ export interface EditorState {
   lastMeasure: { a: Point; b: Point } | null
   /** Son kaydetmeden bu yana kaydedilmemiş değişiklik var mı */
   dirty: boolean
+  /** Masaüstünde projenin kayıtlı olduğu dosya yolu (web'de null) */
+  currentProjectPath: string | null
+  /** Başlangıç ekranı (son kullanılanlar/yeni/aç) gösteriliyor mu */
+  showStartScreen: boolean
 
   // ── Yardımcılar ──
   getFootprint: (id: string) => Footprint | undefined
@@ -93,6 +97,10 @@ export interface EditorState {
   updateSettings: (fn: (draft: Project) => void, message?: string) => void
   /** Kaydedildi olarak işaretle (kaydedilmemiş değişiklik uyarısını temizler) */
   markSaved: () => void
+  /** Projenin kayıtlı dosya yolunu ayarla (masaüstü) */
+  setProjectPath: (path: string | null) => void
+  /** Başlangıç ekranını göster/gizle */
+  setShowStartScreen: (show: boolean) => void
   beginTransaction: () => void
   endTransaction: () => void
   undo: () => void
@@ -135,15 +143,27 @@ export interface EditorState {
   addVia: (p: Point) => void
   addText: (p: Point, text: string) => void
   assignNet: (compId: string, padName: string, net: string) => void
+  /**
+   * Tüm bağlantıları temizle. scope='all' → PCB izleri+viaları, tüm pad net
+   * atamaları ve şema telleri; 'nets' → yalnız net atamaları; 'traces' → yalnız
+   * PCB izleri/viaları; 'wires' → yalnız şema telleri.
+   */
+  clearAllConnections: (scope?: 'all' | 'nets' | 'traces' | 'wires') => void
   /** Şematik telini sil; ayar açıksa yalnız o telin verdiği net atamalarını da temizle */
   deleteSchematicWire: (wireId: string) => void
+  /** 3B model ekle (içe aktarma) */
+  addModel3D: (model: import('../types').Model3D) => void
+  /** 3B model dönüşümünü güncelle (undo kirletmez) */
+  updateModel3D: (id: string, patch: Partial<import('../types').Model3D>) => void
+  /** 3B modeli sil */
+  removeModel3D: (id: string) => void
   /** Görsel yerleştirmeye başla (null → iptal) */
   startPlacingImage: (img: { src: string; format: 'png' | 'svg'; width: number; height: number } | null) => void
   /** Yerleştirilmekte olan görseli karta ekle */
   placeImage: (x: number, y: number) => void
 
   // ── Proje ──
-  loadProject: (p: Project) => void
+  loadProject: (p: Project, path?: string | null) => void
   resetProject: () => void
   runDrcNow: () => void
   autoroute: () => { routed: number; failed: string[]; log: string[] }
@@ -187,6 +207,8 @@ export const useStore = create<EditorState>((set, get) => ({
   footprintEditorTarget: null,
   lastMeasure: null,
   dirty: false,
+  currentProjectPath: null,
+  showStartScreen: true,
 
   getFootprint: (id) => {
     // Öncelik: projeye gömülü > kullanıcı kütüphanesi > yerleşik
@@ -238,6 +260,8 @@ export const useStore = create<EditorState>((set, get) => ({
     }),
 
   markSaved: () => set({ dirty: false }),
+  setProjectPath: (path) => set({ currentProjectPath: path }),
+  setShowStartScreen: (show) => set({ showStartScreen: show }),
 
   beginTransaction: () =>
     set((state) => ({ pendingSnapshot: structuredClone(state.project) })),
@@ -343,7 +367,7 @@ export const useStore = create<EditorState>((set, get) => ({
     // Ayar açıksa: silinen izlerin yalnız kendilerinin verdiği pad net atamalarını
     // (silme sonrası başka izle/telle desteklenmiyorsa) topla
     const clearNets =
-      (project.settings.clearNetsOnPathDelete ?? true) && sel.traceIds.length > 0
+      (project.settings.clearNetsOnPathDeletePcb ?? false) && sel.traceIds.length > 0
     const affectedPads: { componentId: string; padName: string; net: string }[] = []
     if (clearNets) {
       const deleted = project.traces.filter((tr) => sel.traceIds.includes(tr.id))
@@ -781,14 +805,36 @@ export const useStore = create<EditorState>((set, get) => ({
     }, net ? t('Net atandı: {net}', { net }) : t('Net kaldırıldı'))
   },
 
+  clearAllConnections: (scope = 'all') => {
+    const clearTraces = scope === 'all' || scope === 'traces'
+    const clearNets = scope === 'all' || scope === 'nets'
+    const clearWires = scope === 'all' || scope === 'wires'
+    get().commit((p) => {
+      if (clearTraces) {
+        p.traces = []
+        p.vias = []
+      }
+      if (clearWires) {
+        p.schematic.wires = []
+      }
+      if (clearNets) {
+        for (const c of p.components) c.padNets = {}
+      }
+    }, t('Bağlantılar temizlendi'))
+    set({ selection: emptySelection() })
+  },
+
   deleteSchematicWire: (wireId) => {
     const { getFootprint, project } = get()
     const wire = project.schematic.wires.find((w) => w.id === wireId)
     if (!wire) return
-    const clear = project.settings.clearNetsOnPathDelete ?? true
+    const clear = project.settings.clearNetsOnPathDeleteSchematic ?? true
+    const removeStale = project.settings.removePcbTracesOnSchematicChange ?? true
     // Silmeden ÖNCE bu tele değen pinleri topla (atamaları temizlemek için)
     const affected = clear ? pinsOnWire(project, getFootprint, wire.points) : []
     get().commit((p) => {
+      // Değişiklik öncesi pin netleri (geçersiz kalan PCB izlerini bulmak için)
+      const before = removeStale ? snapshotPadNets(p) : null
       p.schematic.wires = p.schematic.wires.filter((w) => w.id !== wireId)
       syncSchematicNets(p, getFootprint)
       if (clear && affected.length > 0) {
@@ -801,7 +847,30 @@ export const useStore = create<EditorState>((set, get) => ({
           if (comp) delete comp.padNets[pin.padName]
         }
       }
+      // Şema değişince geçersiz kalan eski PCB izlerini kaldır (ayar)
+      if (before) removeStalePcbTraces(p, getFootprint, before)
     }, t('Tel silindi'))
+  },
+
+  addModel3D: (model) => {
+    get().commit((p) => {
+      if (!p.models3d) p.models3d = []
+      p.models3d.push(model)
+    }, t('3B model içe aktarıldı: {name}', { name: model.name }))
+  },
+
+  updateModel3D: (id, patch) => {
+    // Kaydırıcı ayarlamaları undo geçmişini kirletmesin (dirty işaretler)
+    get().updateSettings((p) => {
+      const m = p.models3d?.find((x) => x.id === id)
+      if (m) Object.assign(m, patch)
+    })
+  },
+
+  removeModel3D: (id) => {
+    get().commit((p) => {
+      if (p.models3d) p.models3d = p.models3d.filter((m) => m.id !== id)
+    }, t('3B model kaldırıldı'))
   },
 
   startPlacingImage: (img) =>
@@ -838,7 +907,7 @@ export const useStore = create<EditorState>((set, get) => ({
     set({ placingImage: null, selection: { ...emptySelection(), imageIds: [newId] } })
   },
 
-  loadProject: (p) =>
+  loadProject: (p, path = null) =>
     set({
       project: p,
       selection: emptySelection(),
@@ -848,12 +917,16 @@ export const useStore = create<EditorState>((set, get) => ({
       drcViolations: null,
       activeLayer: 'top',
       dirty: false,
+      currentProjectPath: path,
+      showStartScreen: false,
       statusMessage: t('"{name}" yüklendi', { name: p.name })
     }),
 
   resetProject: () =>
     set({
       project: newProject(),
+      currentProjectPath: null,
+      showStartScreen: false,
       selection: emptySelection(),
       past: [],
       future: [],

@@ -1,7 +1,7 @@
 {
   "name": "caya-pcb-studio",
   "productName": "CaYa PCB Studio",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Kapsamlı çift katmanlı devre kartı (PCB) tasarım uygulaması — macOS, Windows & Web",
   "author": "CaYaDev (https://cayadev.com)",
   "license": "MIT",

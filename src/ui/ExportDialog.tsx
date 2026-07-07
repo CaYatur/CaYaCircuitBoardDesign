@@ -8,7 +8,7 @@ import type { CopperLayer } from '../types'
 import { saveTextFile, saveFilesToDirectory, type ExportFile } from '../io/files'
 import { gerberFileSet, sanitize } from '../io/gerber'
 import { excellonDrill } from '../io/excellon'
-import { svgCopperLayer, svgSilkLayer, svgOutline, svgComposite } from '../io/svg'
+import { svgCopperLayer, svgSilkLayer, svgOutline, svgComposite, svgOutlineTraces } from '../io/svg'
 import {
   defaultGcodeOptions,
   gcodeDrill,
@@ -16,7 +16,7 @@ import {
   gcodeOutlineCut
 } from '../io/gcode'
 import { bomCsv, pickAndPlaceCsv } from '../io/bom'
-import { exportCompositePng, exportLayerPng, compositePngBlob, layerPngBlob } from '../io/png'
+import { exportCompositePng, exportLayerPng, compositePngBlob, layerPngBlob, exportOutlineTracesPng } from '../io/png'
 import {
   exportSchematicPng,
   schematicSvgContent,
@@ -316,6 +316,20 @@ export function ExportDialog() {
               <button
                 disabled={busy}
                 onClick={() =>
+                  run(t('Dış hat + yollar (S/B) SVG'), () =>
+                    saveTextFile(
+                      `${base}-dishat-yollar.svg`,
+                      svgOutlineTraces(project, getFootprint),
+                      'image/svg+xml'
+                    ).then(() => {})
+                  )
+                }
+              >
+                🖊 {t('Kart dış hattı + yollar (S/B)')} (SVG)
+              </button>
+              <button
+                disabled={busy}
+                onClick={() =>
                   run(t('Şema görüntüsü SVG'), () =>
                     saveTextFile(
                       `${base}-sema.svg`,
@@ -476,6 +490,14 @@ export function ExportDialog() {
                 }
               >
                 🎨 {t('Renkli birleşik görünüm')}
+              </button>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run(t('Dış hat + yollar (S/B) PNG'), () => exportOutlineTracesPng(project, getFootprint))
+                }
+              >
+                🖊 {t('Kart dış hattı + yollar (S/B)')}
               </button>
               <button
                 disabled={busy}

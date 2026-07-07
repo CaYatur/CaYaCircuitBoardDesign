@@ -3,6 +3,7 @@
 import { useStore } from '../state/store'
 import type { ToolId } from '../types'
 import { saveProjectFile, openProjectFile } from '../io/project'
+import { useRecents } from '../state/recents'
 import { usePrompt } from './prompts'
 import { useI18n, useT } from '../i18n'
 
@@ -56,20 +57,32 @@ export function Toolbar() {
 
   const handleOpen = async () => {
     try {
-      const p = await openProjectFile()
-      if (p) loadProject(p)
+      const res = await openProjectFile()
+      if (res) {
+        loadProject(res.project, res.path)
+        if (!res.path) useRecents.getState().addWeb(res.project.name, JSON.stringify(res.project))
+      }
     } catch (err: any) {
       setStatus(t('Proje açılamadı: {err}', { err: err?.message ?? err }))
     }
   }
 
-  const handleSave = async () => {
-    const ok = await saveProjectFile(project)
-    if (ok) {
-      useStore.getState().markSaved()
-      setStatus(t('"{name}" kaydedildi (.cayapcb)', { name: project.name }))
+  const doSave = async (saveAs: boolean) => {
+    try {
+      const st = useStore.getState()
+      const res = await saveProjectFile(st.project, { path: st.currentProjectPath, saveAs })
+      if (res) {
+        st.markSaved()
+        st.setProjectPath(res.path)
+        if (!res.path) useRecents.getState().addWeb(st.project.name, JSON.stringify(st.project))
+        else useRecents.getState().refresh()
+        setStatus(t('"{name}" kaydedildi (.cayapcb)', { name: st.project.name }))
+      }
+    } catch (err: any) {
+      setStatus(t('Kaydedilemedi: {err}', { err: err?.message ?? err }))
     }
   }
+  const handleSave = () => doSave(false)
 
   return (
     <div className="toolbar">
@@ -113,9 +126,18 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar-group">
+        <button
+          title={t('Başlangıç ekranı (son kullanılanlar)')}
+          onClick={() => useStore.getState().setShowStartScreen(true)}
+        >
+          🏠 {t('Başlangıç')}
+        </button>
         <button title={t('Yeni Proje')} onClick={handleNew}>🗋 {t('Yeni')}</button>
         <button title={t('Proje Aç (.cayapcb)')} onClick={handleOpen}>📂 {t('Aç')}</button>
         <button title={t('Projeyi Kaydet')} onClick={handleSave}>💾 {t('Kaydet')}</button>
+        <button title={t('Farklı Kaydet (yeni konum)')} onClick={() => doSave(true)}>
+          {t('Farklı Kaydet')}
+        </button>
       </div>
 
       <div className="toolbar-group">

@@ -1610,6 +1610,279 @@ select option {
   margin-bottom: 8px;
 }
 
+/* ── 3B model paneli ── */
+.model3d-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 280px;
+  max-height: calc(100% - 90px);
+  overflow: auto;
+  background: rgba(20, 23, 28, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  z-index: 20;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.model3d-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.model3d-panel-head h4 { margin: 0; font-size: 13px; }
+.model3d-panel-head button {
+  background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px;
+}
+.model3d-list { display: flex; flex-direction: column; gap: 10px; }
+.model3d-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--bg-panel2);
+}
+.model3d-item-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.model3d-item-head .board-check { flex: 1; min-width: 0; }
+.model3d-name {
+  display: inline-block; max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; vertical-align: bottom; font-size: 12px;
+}
+.model3d-item-head input[type='color'] { width: 26px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: none; }
+.model3d-del { background: transparent; border: none; cursor: pointer; font-size: 13px; }
+.model3d-slider { display: grid; grid-template-columns: 58px 1fr 54px; align-items: center; gap: 6px; margin-bottom: 4px; }
+.model3d-slider > span { font-size: 11px; color: var(--text-dim); }
+.model3d-slider input[type='number'] { width: 54px; font-size: 11px; }
+.model3d-xyz { display: flex; gap: 6px; margin-top: 4px; }
+.model3d-num { display: flex; flex-direction: column; flex: 1; font-size: 11px; color: var(--text-dim); }
+.model3d-num input { width: 100%; box-sizing: border-box; font-size: 11px; }
+.model3d-hint { font-size: 10px; color: var(--text-dim); margin: 8px 0 0; }
+
+/* ── Başlangıç ekranı ── */
+.home-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: radial-gradient(1200px 700px at 50% -10%, rgba(34, 197, 194, 0.12), transparent),
+    var(--bg, #14171c);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+}
+.home-card {
+  width: 100%;
+  max-width: 640px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.home-hero {
+  text-align: center;
+  margin-bottom: 22px;
+}
+.home-brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.home-brand-name {
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+.home-brand-sub {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 3px;
+}
+.home-tag {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-top: 6px;
+}
+.home-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.home-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 16px;
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, transform 0.06s;
+}
+.home-action:hover { border-color: var(--accent); transform: translateY(-1px); }
+.home-action-primary { border-color: var(--accent); }
+.home-action-icon { font-size: 22px; }
+.home-action-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.home-action-desc { font-size: 11px; color: var(--text-dim); }
+.home-recents { margin-bottom: 16px; }
+.home-recents-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.home-recents-head h4 { margin: 0; font-size: 13px; color: var(--text-dim); }
+.home-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+}
+.home-clear:hover { color: var(--danger, #e0564a); }
+.home-empty { color: var(--text-dim); font-size: 12px; padding: 10px 0; }
+.home-recent-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow: auto; }
+.home-recent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+.home-recent:hover { border-color: var(--accent); }
+.home-recent-icon { color: var(--accent); font-size: 15px; }
+.home-recent-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.home-recent-name { font-size: 13px; color: var(--text); font-weight: 500; }
+.home-recent-path {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-recent-time { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.home-skip {
+  display: block;
+  margin: 4px auto 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+}
+.home-skip:hover { color: var(--accent); }
+
+@media (max-width: 520px) {
+  .home-actions { grid-template-columns: 1fr; }
+}
+
+/* ── Footprint tuvali (etkileşimli) araç çubuğu ── */
+.fp-canvas-tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.fp-canvas-tools button {
+  font-size: 12px;
+  padding: 4px 9px;
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+}
+.fp-canvas-tools button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.fp-canvas-tools button:disabled { opacity: 0.4; cursor: default; }
+.fp-snap-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+.fp-canvas-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* ── Tek pin net atama popover'ı ── */
+.net-popover {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  width: 240px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.net-popover-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.net-popover input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-panel2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.net-popover-quick {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.net-popover-quick button {
+  background: var(--bg-panel2);
+  color: var(--warn);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 9px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.net-popover-quick button:hover {
+  border-color: var(--warn);
+}
+
+.net-popover-quick .net-popover-clear {
+  color: var(--text-dim);
+}
+
+.net-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .quick-nets {
   display: flex;
   gap: 4px;
@@ -1873,6 +2146,23 @@ select option {
 
 .settings-row:first-of-type {
   border-top: none;
+}
+
+.settings-actions-row {
+  align-items: flex-start;
+}
+
+.settings-action-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-action-buttons button {
+  font-size: 12px;
+  padding: 5px 10px;
+  white-space: nowrap;
 }
 
 .settings-row .settings-label {

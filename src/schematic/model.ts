@@ -12,7 +12,7 @@ import type {
   SchematicSymbol
 } from '../types'
 import { uid } from '../types'
-import { rotatePoint, segPointDist } from '../core/geometry'
+import { padWorldPos, rotatePoint, segPointDist } from '../core/geometry'
 
 /** Şematik ızgara adımı */
 export const SCH_GRID = 2.54
@@ -264,8 +264,9 @@ export function syncSchematicNets(
   const usedAuto = new Set<string>()
   const groupName = new Map<number, string>()
   const groups = [...new Set(Array.from({ length: nWires }, (_, i) => find(i)))]
+  const pendingAuto: number[] = []
   for (const g of groups) {
-    // 1) Açık tel adı
+    // 1) Açık tel adı (kullanıcının verdiği)
     const explicit = wires
       .filter((_, i) => find(i) === g)
       .map((w) => w.net)
@@ -275,28 +276,37 @@ export function syncSchematicNets(
       groupName.set(g, explicit[0])
       continue
     }
-    // 2) Bağlı pinlerde önceden atanmış net (GND, VCC gibi elle verilenler)
+    // Bağlı pinlerde önceden atanmış netleri say
     const memberPins = groupPins.get(g) ?? []
-    const existing = memberPins
-      .map((pin) => {
-        const comp = project.components.find((c) => c.id === pin.componentId)
-        return comp?.padNets[pin.padName] ?? ''
-      })
-      .filter((n) => n && !/^N\$\d+$/.test(n))
-      .sort()
-    if (existing.length > 0) {
-      groupName.set(g, existing[0])
+    const netCounts = new Map<string, number>()
+    for (const pin of memberPins) {
+      const comp = project.components.find((c) => c.id === pin.componentId)
+      const n = comp?.padNets[pin.padName] ?? ''
+      if (n) netCounts.set(n, (netCounts.get(n) ?? 0) + 1)
+    }
+    // 2) Elle verilmiş (N$ olmayan) ad — GND, VCC vb.
+    const named = [...netCounts.keys()].filter((n) => !/^N\$\d+$/.test(n)).sort()
+    if (named.length > 0) {
+      groupName.set(g, named[0])
       continue
     }
-    groupName.set(g, '') // sonradan otomatik ad
-  }
-  for (const g of groups) {
-    if (!groupName.get(g)) {
-      let name = `N$${autoCounter++}`
-      while (usedAuto.has(name)) name = `N$${autoCounter++}`
-      groupName.set(g, name)
+    // 3) Mevcut otomatik adı KORU (kararlılık) — böylece ilgisiz bir düzenleme
+    //    netleri yeniden numaralamaz, PCB izleri yanlışlıkla "eski" sayılmaz.
+    const autos = [...netCounts.entries()]
+      .filter(([n]) => /^N\$\d+$/.test(n) && !usedAuto.has(n))
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    if (autos.length > 0) {
+      groupName.set(g, autos[0][0])
+      usedAuto.add(autos[0][0])
+      continue
     }
-    usedAuto.add(groupName.get(g)!)
+    pendingAuto.push(g) // yeni otomatik ad ata
+  }
+  for (const g of pendingAuto) {
+    let name = `N$${autoCounter++}`
+    while (usedAuto.has(name)) name = `N$${autoCounter++}`
+    groupName.set(g, name)
+    usedAuto.add(name)
   }
 
   // Pinlere yaz
@@ -306,6 +316,92 @@ export function syncSchematicNets(
       const comp = project.components.find((c) => c.id === pin.componentId)
       if (comp) comp.padNets[pin.padName] = name
     }
+  }
+}
+
+/** Tüm komponent pinlerinin `compId::pad → net` anlık görüntüsü. */
+export function snapshotPadNets(project: Project): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const c of project.components) {
+    for (const [pad, net] of Object.entries(c.padNets)) {
+      if (net) map.set(`${c.id}::${pad}`, net)
+    }
+  }
+  return map
+}
+
+/**
+ * Bir pinin neti (before→after) gerçekten "başka bir bağlantıya" dönüştü mü?
+ * - Pin kopmuşsa (yeni net boş) → evet
+ * - İki elle adlandırılmış net arasında değiştiyse (GND→VCC) → evet
+ * - Yalnız otomatik ad değiştiyse (N$3→N$5) → HAYIR (churn; izleri silme)
+ */
+function isStaleNetChange(oldNet: string, newNet: string): boolean {
+  if (!oldNet) return false
+  if (!newNet) return true
+  if (oldNet === newNet) return false
+  const oldAuto = /^N\$\d+$/.test(oldNet)
+  const newAuto = /^N\$\d+$/.test(newNet)
+  if (oldAuto || newAuto) return false
+  return true
+}
+
+/**
+ * Şema değişiminden sonra, neti değişen pinlerin ESKİ netine ait ve o pinin
+ * pad'ine oturan PCB izlerini kaldırır (issue 8). `before`, değişiklikten önceki
+ * `snapshotPadNets` sonucudur. Kaldırma yalnız gerçek bağlantı değişimlerinde
+ * yapılır (bkz. isStaleNetChange), otomatik ad churn'ünde yapılmaz.
+ */
+export function removeStalePcbTraces(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  before: Map<string, string>
+): number {
+  const stale: { pos: Point; oldNet: string }[] = []
+  for (const c of project.components) {
+    const fp = getFootprint(c.footprintId)
+    if (!fp) continue
+    for (const pad of fp.pads) {
+      if (pad.name.startsWith('MH')) continue
+      const oldNet = before.get(`${c.id}::${pad.name}`) ?? ''
+      const newNet = c.padNets[pad.name] ?? ''
+      if (isStaleNetChange(oldNet, newNet)) {
+        stale.push({ pos: padWorldPos(c, pad), oldNet })
+      }
+    }
+  }
+  if (stale.length === 0) return 0
+  const tol = 0.3
+  const before2 = project.traces.length
+  project.traces = project.traces.filter((tr) => {
+    if (!tr.net) return true
+    const ends = [tr.points[0], tr.points[tr.points.length - 1]]
+    for (const s of stale) {
+      if (
+        tr.net === s.oldNet &&
+        ends.some((e) => Math.abs(e.x - s.pos.x) <= tol && Math.abs(e.y - s.pos.y) <= tol)
+      ) {
+        return false
+      }
+    }
+    return true
+  })
+  return before2 - project.traces.length
+}
+
+/**
+ * Şema netlerini senkronlar ve (ayar açıksa) şema değişiminden ötürü geçersiz
+ * kalan eski PCB izlerini kaldırır. Şema tarafındaki tüm tel düzenlemelerinde
+ * `syncSchematicNets` yerine bunu çağırın.
+ */
+export function syncSchematicNetsAndPcb(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined
+): void {
+  const before = snapshotPadNets(project)
+  syncSchematicNets(project, getFootprint)
+  if (project.settings.removePcbTracesOnSchematicChange ?? true) {
+    removeStalePcbTraces(project, getFootprint, before)
   }
 }
 

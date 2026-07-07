@@ -31,6 +31,8 @@ export interface Scene3DState {
   height: number
   showComponents: boolean
   showTraces: boolean
+  /** İçe aktarılmış 3B modelleri göster (varsayılan true) */
+  showModels?: boolean
 }
 
 const BOARD_T = 1.6 // kart kalınlığı (mm)
@@ -372,6 +374,33 @@ function buildComponent(comp: ComponentInstance, fp: Footprint, out: Face[]) {
 
 // ─── Sahne kurulumu + render ────────────────────────────────────────────────
 
+/** İçe aktarılmış 3B modelleri (OBJ/STL) kart üzerine yerleştir */
+function buildModels(project: Project, out: Face[]) {
+  for (const m of project.models3d ?? []) {
+    if (m.visible === false) continue
+    const rgb = hexToRgb(m.color || '#9aa4b2')
+    const s = m.scale || 1
+    const rad = ((m.rotZ || 0) * Math.PI) / 180
+    const cos = Math.cos(rad)
+    const sin = Math.sin(rad)
+    const baseZ = TOP_Z + (m.z || 0)
+    const V = m.verts
+    const T = m.tris
+    const tx = (vi: number): V3 => {
+      const lx = V[vi * 3] * s
+      const ly = V[vi * 3 + 1] * s
+      const lz = V[vi * 3 + 2] * s
+      return { x: m.x + (lx * cos - ly * sin), y: m.y + (lx * sin + ly * cos), z: baseZ + lz }
+    }
+    for (let i = 0; i + 2 < T.length; i += 3) {
+      const a = tx(T[i])
+      const b = tx(T[i + 1])
+      const c = tx(T[i + 2])
+      out.push({ pts: [a, b, c], color: shade(rgb, faceNormal([a, b, c])) })
+    }
+  }
+}
+
 function buildScene(s: Scene3DState): Face[] {
   const out: Face[] = []
   buildBoard(s.project, out)
@@ -382,6 +411,7 @@ function buildScene(s: Scene3DState): Face[] {
       if (fp) buildComponent(comp, fp, out)
     }
   }
+  if (s.showModels !== false) buildModels(s.project, out)
   return out
 }
 

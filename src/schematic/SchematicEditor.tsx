@@ -16,7 +16,7 @@ import {
   symbolBBox,
   symbolLayout,
   symbolToWorld,
-  syncSchematicNets
+  syncSchematicNetsAndPcb
 } from './model'
 import { schematicGlyph, type GlyphPrim } from './symbols'
 import { usePrompt } from '../ui/prompts'
@@ -550,7 +550,7 @@ export function SchematicEditor() {
               s.commit((p) => {
                 const w = p.schematic.wires.find((x) => x.id === wireId)
                 if (w) w.net = name.trim()
-                syncSchematicNets(p, s.getFootprint)
+                syncSchematicNetsAndPcb(p, s.getFootprint)
               }, t('Net adı atandı: {name}', { name: name.trim() || 'N$' }))
             }
           }
@@ -601,7 +601,7 @@ export function SchematicEditor() {
       const s = store.getState()
       s.commit((p) => {
         p.schematic.wires.push({ id: uid('w'), points: pts, net: '' })
-        syncSchematicNets(p, s.getFootprint)
+        syncSchematicNetsAndPcb(p, s.getFootprint)
       }, t('Tel çizildi — netler PCB\'ye senkronlandı'))
     },
     [store, t]
@@ -665,7 +665,7 @@ export function SchematicEditor() {
       if (drag.moved) {
         // Sembol/tel taşınınca pin-tel bağlantıları değişmiş olabilir → netleri yeniden çöz
         const s = store.getState()
-        s.mutateLive((p) => syncSchematicNets(p, s.getFootprint))
+        s.mutateLive((p) => syncSchematicNetsAndPcb(p, s.getFootprint))
         store.getState().endTransaction()
       } else {
         store.setState({ pendingSnapshot: null })
@@ -699,7 +699,7 @@ export function SchematicEditor() {
                 const w = p.schematic.wires.find((x) => x.id === selectedWire)
                 if (w) {
                   w.points.splice(vertexIdx, 1)
-                  syncSchematicNets(p, s.getFootprint)
+                  syncSchematicNetsAndPcb(p, s.getFootprint)
                 }
               }, t('Tel köşe noktası silindi'))
             }
@@ -721,7 +721,7 @@ export function SchematicEditor() {
                 const w = p.schematic.wires.find((x) => x.id === selectedWire)
                 if (w) {
                   w.points.splice(insertAt, 0, pt)
-                  syncSchematicNets(p, s.getFootprint)
+                  syncSchematicNetsAndPcb(p, s.getFootprint)
                 }
               }, t('Tel köşe noktası eklendi'))
             }
@@ -798,7 +798,7 @@ export function SchematicEditor() {
                 const w = p.schematic.wires.find((x) => x.id === selectedWireVertex.wireId)
                 if (w) {
                   w.points.splice(selectedWireVertex.index, 1)
-                  syncSchematicNets(p, s.getFootprint)
+                  syncSchematicNetsAndPcb(p, s.getFootprint)
                 }
               }, t('Tel köşe noktası silindi'))
             } else if (wire) {
@@ -832,7 +832,7 @@ export function SchematicEditor() {
         const second = w.points.slice(index)
         w.points = first
         p.schematic.wires.push({ id: uid('w'), points: second.map((pt) => ({ ...pt })), net: w.net })
-        syncSchematicNets(p, s.getFootprint)
+        syncSchematicNetsAndPcb(p, s.getFootprint)
       }, t('Tel noktadan bölündü'))
     },
     [store, t]
@@ -883,7 +883,7 @@ export function SchematicEditor() {
                 if (wire && wire.points.length > 2) {
                   s.commit((p) => {
                     const w = p.schematic.wires.find((x) => x.id === wireMenu.wireId)
-                    if (w) { w.points.splice(wireMenu.index, 1); syncSchematicNets(p, s.getFootprint) }
+                    if (w) { w.points.splice(wireMenu.index, 1); syncSchematicNetsAndPcb(p, s.getFootprint) }
                   }, t('Tel köşe noktası silindi'))
                 } else if (wire) {
                   s.deleteSchematicWire(wireMenu.wireId)
