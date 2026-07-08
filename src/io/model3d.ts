@@ -3,7 +3,7 @@
 // desteklenir; sonuç, 3B görünümün ressam-algoritması çizicisine beslenen
 // düz üçgen listesidir (verts + tris).
 
-import type { Model3D, BoardOutline } from '../types'
+import type { BoardOutline, FootprintModel3D, Model3D } from '../types'
 import { uid } from '../types'
 
 export interface Mesh {
@@ -148,6 +148,46 @@ export async function loadModelFromFile(
     scale,
     color: '#9aa4b2',
     visible: true
+  }
+}
+
+/**
+ * Bir dosyadan footprint 3B modeli üret (footprint editörü). Mesh XY'de
+ * merkezlenir, tabanı z=0'a oturur; başlangıç ölçeği gövde boyutuna uydurulur.
+ */
+export async function loadFootprintMeshFromFile(
+  file: File,
+  body: { width: number; height: number }
+): Promise<FootprintModel3D> {
+  const nameLower = file.name.toLowerCase()
+  let mesh: Mesh
+  if (nameLower.endsWith('.obj')) {
+    mesh = parseOBJ(await file.text())
+  } else if (nameLower.endsWith('.stl')) {
+    mesh = parseSTL(await file.arrayBuffer())
+  } else {
+    const buf = await file.arrayBuffer()
+    const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(64, buf.byteLength)))
+    mesh = /^\s*(v |#|o |g |mtllib)/i.test(head)
+      ? parseOBJ(new TextDecoder().decode(new Uint8Array(buf)))
+      : parseSTL(buf)
+  }
+  if (mesh.tris.length === 0) {
+    throw new Error('Model boş veya desteklenmeyen biçim (OBJ/STL bekleniyor)')
+  }
+  const { size } = normalizeMesh(mesh)
+  const maxXY = Math.max(size.x, size.y) || 1
+  const target = Math.max(1, Math.max(body.width, body.height))
+  const scale = +(target / maxXY).toFixed(4)
+  return {
+    kind: 'mesh',
+    verts: mesh.verts,
+    tris: mesh.tris,
+    scale,
+    rotZ: 0,
+    z: 0,
+    color: '#9aa4b2',
+    name: file.name.replace(/\.(obj|stl)$/i, '')
   }
 }
 

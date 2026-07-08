@@ -37,6 +37,31 @@ export interface SymbolLayout {
  * Pinler sola/sağa bölünür; tüm pin uçları SCH_GRID katlarında kalır.
  */
 export function symbolLayout(fp: Footprint): SymbolLayout {
+  // Kullanıcının footprint editöründe tasarladığı özel sembol varsa onu kullan:
+  // pin uçları tanımdan gelir; iç nokta, yönüne göre bir ızgara içeridedir.
+  if (fp.symbol && fp.symbol.pins.length > 0) {
+    const sPins: SymbolPin[] = fp.symbol.pins.map((p) => ({
+      name: p.name,
+      end: { x: p.x, y: p.y },
+      inner: { x: p.x + (p.side === 'left' ? SCH_GRID : -SCH_GRID), y: p.y },
+      side: p.side
+    }))
+    let box = fp.symbol.box
+    if (!box) {
+      const xs = sPins.map((p) => p.inner.x)
+      const ys = sPins.map((p) => p.inner.y)
+      for (const pr of fp.symbol.prims) {
+        if (pr.k === 'line') { xs.push(pr.x1, pr.x2); ys.push(pr.y1, pr.y2) }
+        else if (pr.k === 'poly') { for (const q of pr.pts) { xs.push(q.x); ys.push(q.y) } }
+        else if (pr.k === 'circle' || pr.k === 'arc') { xs.push(pr.cx - pr.r, pr.cx + pr.r); ys.push(pr.cy - pr.r, pr.cy + pr.r) }
+        else if (pr.k === 'plusminus' || pr.k === 'text') { xs.push(pr.x); ys.push(pr.y) }
+      }
+      const minX = Math.min(...xs)
+      const minY = Math.min(...ys)
+      box = { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY }
+    }
+    return { box, pins: sPins }
+  }
   const pads = fp.pads.filter((p) => !p.name.startsWith('MH'))
   const n = pads.length
   const leftCount = Math.ceil(n / 2)
@@ -198,7 +223,8 @@ export function syncSchematicNets(
 ): void {
   const wires = project.schematic.wires
   const nWires = wires.length
-  if (nWires === 0) return
+  // DİKKAT: nWires === 0 olsa bile devam edilir — son tel silindiğinde
+  // aşağıdaki provenans temizliği bayat pin atamalarını kaldırmalıdır.
 
   // Tel-tel bağlantı grupları (union-find)
   const parent = Array.from({ length: nWires }, (_, i) => i)
@@ -243,21 +269,32 @@ export function syncSchematicNets(
     }
   }
 
-  // Her pin hangi tel grubuna bağlı?
-  const groupPins = new Map<number, PinRef[]>()
-  for (const pin of pins) {
+  // Her pin hangi tel(ler)e değiyor? Aynı pine değen ama birbirine değmeyen
+  // teller de o pin üzerinden elektriksel olarak bağlıdır → gruplar birleşir.
+  const pinTouches: number[][] = pins.map((pin) => {
+    const touching: number[] = []
     for (let i = 0; i < nWires; i++) {
       if (
         wires[i].points.some((p) => near(p, pin.pos)) ||
         pointOnWire(pin.pos, wires[i].points)
       ) {
-        const g = find(i)
-        if (!groupPins.has(g)) groupPins.set(g, [])
-        groupPins.get(g)!.push(pin)
-        break
+        touching.push(i)
       }
     }
+    return touching
+  })
+  for (const touching of pinTouches) {
+    for (let k = 1; k < touching.length; k++) union(touching[0], touching[k])
   }
+  // Birleşimler bittikten SONRA pinleri gruplara ata (kökler değişmiş olabilir)
+  const groupPins = new Map<number, PinRef[]>()
+  pins.forEach((pin, pi) => {
+    const touching = pinTouches[pi]
+    if (touching.length === 0) return
+    const g = find(touching[0])
+    if (!groupPins.has(g)) groupPins.set(g, [])
+    groupPins.get(g)!.push(pin)
+  })
 
   // Grup adları
   let autoCounter = 1
@@ -309,14 +346,60 @@ export function syncSchematicNets(
     usedAuto.add(name)
   }
 
-  // Pinlere yaz
+  // Pinlere yaz + provenans kaydı (bu senkronun atadığı pinler)
+  const assigned: Record<string, string> = {}
   for (const [g, memberPins] of groupPins) {
     const name = groupName.get(g)!
     for (const pin of memberPins) {
       const comp = project.components.find((c) => c.id === pin.componentId)
-      if (comp) comp.padNets[pin.padName] = name
+      if (comp) {
+        comp.padNets[pin.padName] = name
+        assigned[`${pin.componentId}::${pin.padName}`] = name
+      }
     }
   }
+
+  // Bayat şema atamalarını temizle: önceki senkronda tel üzerinden atanmış ama
+  // artık hiçbir tele bağlı olmayan pinlerin neti kaldırılır (görsel olarak
+  // şemada kalan hayalet etiket/ratsnest hatasını önler). Elle (PCB'de) verilmiş
+  // atamalar provenans kaydında olmadığından dokunulmaz.
+  if (project.settings.clearNetsOnPathDeleteSchematic ?? true) {
+    const prev = project.schematic.pinNets ?? {}
+    for (const [key, oldNet] of Object.entries(prev)) {
+      if (assigned[key] !== undefined) continue // hâlâ tele bağlı
+      const [compId, padName] = key.split('::')
+      const comp = project.components.find((c) => c.id === compId)
+      // Yalnız senkronun yazdığı değer değişmeden duruyorsa temizle
+      if (comp && comp.padNets[padName] === oldNet) delete comp.padNets[padName]
+    }
+  }
+  project.schematic.pinNets = assigned
+}
+
+/** Verilen telin bağlantı grubundaki (dokunarak birleşen) tüm tel id'leri */
+export function wiresInGroup(project: Project, wireId: string): string[] {
+  const wires = project.schematic.wires
+  const start = wires.find((w) => w.id === wireId)
+  if (!start) return []
+  const group = new Set<string>([wireId])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const w of wires) {
+      if (group.has(w.id)) continue
+      const touches = wires.some(
+        (m) =>
+          group.has(m.id) &&
+          (m.points.some((p) => pointOnWire(p, w.points)) ||
+            w.points.some((p) => pointOnWire(p, m.points)))
+      )
+      if (touches) {
+        group.add(w.id)
+        grew = true
+      }
+    }
+  }
+  return [...group]
 }
 
 /** Tüm komponent pinlerinin `compId::pad → net` anlık görüntüsü. */
@@ -428,6 +511,50 @@ export function pinsOnWire(
     }
   }
   return out
+}
+
+/**
+ * Komponent(ler) silindikten SONRA çağrılır: silinen pinlere değen ve artık
+ * hiçbir kalan pine VE hiçbir başka tele değmeyen telleri kaldırır. Böylece
+ * silinen komponentin tel artıkları şemada asılı kalmaz; iki komponenti
+ * bağlayan teller ise (bir ucu boşta kalsa da) korunur.
+ */
+export function removeOrphanWires(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  deletedPinPositions: Point[]
+): number {
+  if (deletedPinPositions.length === 0) return 0
+  // Kalan tüm pin konumları
+  const remainingPins: Point[] = []
+  for (const sym of project.schematic.symbols) {
+    const comp = project.components.find((c) => c.id === sym.componentId)
+    if (!comp) continue
+    const fp = getFootprint(comp.footprintId)
+    if (!fp) continue
+    for (const pin of symbolLayout(fp).pins) {
+      remainingPins.push(symbolToWorld(sym, pin.end))
+    }
+  }
+  // Tel grubu (dokunarak bağlı zincir) bütün olarak değerlendirilir: grup
+  // silinen bir pine değiyor ve kalan HİÇBİR pine değmiyorsa tümüyle kaldırılır.
+  const before = project.schematic.wires.length
+  const wires = project.schematic.wires
+  const visited = new Set<string>()
+  const removeIds = new Set<string>()
+  const touchesAny = (w: { points: Point[] }, pts: Point[]) =>
+    pts.some((p) => w.points.some((q) => near(q, p)) || pointOnWire(p, w.points))
+  for (const w of wires) {
+    if (visited.has(w.id)) continue
+    const group = wiresInGroup(project, w.id)
+    for (const id of group) visited.add(id)
+    const members = wires.filter((x) => group.includes(x.id))
+    const hitsDeleted = members.some((m) => touchesAny(m, deletedPinPositions))
+    const hitsRemaining = members.some((m) => touchesAny(m, remainingPins))
+    if (hitsDeleted && !hitsRemaining) for (const id of group) removeIds.add(id)
+  }
+  project.schematic.wires = wires.filter((w) => !removeIds.has(w.id))
+  return before - project.schematic.wires.length
 }
 
 /** Herhangi bir tele (hâlâ) bağlı olan pinlerin `compId::padName` kümesi. */

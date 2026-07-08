@@ -7,6 +7,7 @@ import { BoardEditor } from './board/BoardEditor'
 import { Board3DView } from './board/Board3DView'
 import { Toolbar } from './ui/Toolbar'
 import { ToolSettingsBar } from './ui/ToolSettingsBar'
+import { EditorToolStrip } from './ui/EditorToolStrip'
 import { LayerPanel } from './ui/LayerPanel'
 import { LibraryPanel } from './ui/LibraryPanel'
 import { PropertiesPanel } from './ui/PropertiesPanel'
@@ -87,6 +88,7 @@ export default function App() {
         <aside className="sidebar-left">
           <LibraryPanel />
         </aside>
+        <EditorToolStrip />
         <main className="editor-area">
           {mode === 'pcb' && <CanvasEditor />}
           {mode === 'schematic' && <SchematicEditor />}

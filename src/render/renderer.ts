@@ -20,8 +20,17 @@ import {
   componentBBox
 } from '../core/geometry'
 import { placeText } from './vectorFont'
+import { pinSilkLabels } from '../core/pinSilk'
 import { getCachedImage } from './imageCache'
-import { polygonOutlinePoints, cutoutOutlinePoints } from '../core/boardGeometry'
+import {
+  boardEditablePolygon,
+  cutoutOutlinePoints,
+  filletPolygon,
+  polygonOutlinePoints
+} from '../core/boardGeometry'
+import { builtinFootprints } from '../library/footprints'
+
+const builtinFootprintIds = new Set(builtinFootprints.map((fp) => fp.id))
 
 export interface View {
   x: number
@@ -46,14 +55,20 @@ export function fitBoardView(
   height: number
 ): View {
   const margin = 60
-  const scale = Math.min(
-    (width - margin * 2) / project.board.width,
-    (height - margin * 2) / project.board.height
+  // Tuval henüz ölçülmediyse (0/negatif boyut) fit negatif ölçek üretmesin —
+  // aksi halde çizim negatif yarıçaplı arcTo/ellipse ile tüm editörü çökertir.
+  const w = Math.max(1, width)
+  const h = Math.max(1, height)
+  const bw = Math.max(1, project.board.width)
+  const bh = Math.max(1, project.board.height)
+  const scale = Math.max(
+    0.1,
+    Math.min((w - margin * 2) / bw, (h - margin * 2) / bh)
   )
   return {
     scale,
-    x: (width - project.board.width * scale) / 2,
-    y: (height - project.board.height * scale) / 2
+    x: (w - bw * scale) / 2,
+    y: (h - bh * scale) / 2
   }
 }
 
@@ -464,7 +479,7 @@ function boardOutlinePath(ctx: CanvasRenderingContext2D, view: View, project: Pr
   }
 
   if (board.shape === 'circle' || board.shape === 'oval') {
-    ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2)
+    ctx.ellipse(bx + bw / 2, by + bh / 2, Math.max(0, bw / 2), Math.max(0, bh / 2), 0, 0, Math.PI * 2)
     return
   }
 
@@ -480,7 +495,8 @@ function roundRect(
   h: number,
   r: number
 ) {
-  const rr = Math.min(r, w / 2, h / 2)
+  // Negatif yarıçap arcTo'yu (dolayısıyla tüm render'ı) çökertir — 0'a kırp
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2))
   ctx.moveTo(x + rr, y)
   ctx.arcTo(x + w, y, x + w, y + h, rr)
   ctx.arcTo(x + w, y + h, x, y + h, rr)
@@ -814,6 +830,27 @@ function drawComponentSilk(
     }
   }
 
+  // Silk pin adları — pad'in içine yazı (varsayılan pin gösterimi)
+  if (s.project.settings.pinSilkLabels !== false) {
+    for (const lbl of pinSilkLabels(fp)) {
+      const anchor = localToWorld(comp, { x: lbl.x, y: lbl.y })
+      const { strokes, strokeWidth } = placeText(
+        lbl.text, anchor, lbl.size, comp.rotation, comp.side === 'bottom', lbl.align
+      )
+      ctx.lineWidth = Math.max(1, strokeWidth * view.scale)
+      for (const poly of strokes) {
+        ctx.beginPath()
+        const p0 = worldToScreen(view, poly[0])
+        ctx.moveTo(p0.x, p0.y)
+        for (const p of poly.slice(1)) {
+          const sp = worldToScreen(view, p)
+          ctx.lineTo(sp.x, sp.y)
+        }
+        ctx.stroke()
+      }
+    }
+  }
+
   // RefDes etiketi — her zaman okunur yönde, gövdenin üstünde
   if (comp.refDes) {
     const bbox = componentBBox(comp, fp)
@@ -844,6 +881,11 @@ function drawPadLabels(ctx: CanvasRenderingContext2D, s: RenderState) {
   const fontPx = Math.min(13, Math.max(8, view.scale * 0.5))
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
+  // Silk pin adları kapalıyken ad zaten burada (pad içi) gösterilir. Açıkken de
+  // -- pinSilkShowOnPad ayarı kapatılmadıkça -- ad pad içinde silk yazısına ek
+  // olarak gösterilir; ayar kapalıysa yalnızca silk yazısı (pad yanı) görünür.
+  const showName =
+    s.project.settings.pinSilkLabels === false || s.project.settings.pinSilkShowOnPad !== false
 
   for (const comp of project.components) {
     if (comp.side === 'top' && !s.visibleLayers.top && !s.visibleLayers['top-silk']) continue
@@ -855,12 +897,14 @@ function drawPadLabels(ctx: CanvasRenderingContext2D, s: RenderState) {
       const pos = worldToScreen(view, padWorldPos(comp, pad))
       const { height } = padWorldSize(comp, pad)
       // Pad adı — pad'in üstünde, koyu zemin üzerinde
-      ctx.font = `${fontPx}px system-ui, sans-serif`
-      ctx.fillStyle = 'rgba(0,0,0,0.55)'
-      const nameW = ctx.measureText(pad.name).width
-      ctx.fillRect(pos.x - nameW / 2 - 2, pos.y - fontPx / 2 - 1, nameW + 4, fontPx + 2)
-      ctx.fillStyle = '#ffffff'
-      ctx.fillText(pad.name, pos.x, pos.y)
+      if (showName) {
+        ctx.font = `${fontPx}px system-ui, sans-serif`
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'
+        const nameW = ctx.measureText(pad.name).width
+        ctx.fillRect(pos.x - nameW / 2 - 2, pos.y - fontPx / 2 - 1, nameW + 4, fontPx + 2)
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(pad.name, pos.x, pos.y)
+      }
       // Net etiketi — pad'in altında sarı
       const net = comp.padNets[pad.name]
       if (net) {
@@ -874,13 +918,57 @@ function drawPadLabels(ctx: CanvasRenderingContext2D, s: RenderState) {
   ctx.textAlign = 'left'
 }
 
+/** Kart dış hattının kapalı poligonu (dünya mm) — etiket sığdırma kontrolleri için */
+function boardPolygonWorld(project: Project): Point[] {
+  const ed = boardEditablePolygon(project.board)
+  return filletPolygon(ed.points, ed.radii, 6)
+}
+
+/** Nokta poligonun içinde mi? (ışın yöntemi) */
+function pointInPolygon(p: Point, poly: Point[]): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]
+    const b = poly[j]
+    if (
+      a.y > p.y !== b.y > p.y &&
+      p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x
+    ) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+/** Noktanın poligon kenarlarına en kısa mesafesi */
+function distToPolygonEdge(p: Point, poly: Point[]): number {
+  let min = Infinity
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const len2 = dx * dx + dy * dy
+    let t = len2 === 0 ? 0 : ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2
+    t = Math.max(0, Math.min(1, t))
+    const d = Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+    if (d < min) min = d
+  }
+  return min
+}
+
 /**
- * Pad adlarını pad'in DIŞINA, komponent merkezinden dışa doğru hizalı yerleştirir.
- * Adlar birbirinin/başka etiketlerin üstüne binmez (aç-gözlü çakışma önleme).
- * Uzaklaşınca pad içindeki adlar okunmadığında kullanılır (issue 13).
+ * Pad adlarını pad'in yanına yerleştirir — tercihen KART İÇİNE doğru:
+ *  - Varsayılan yön komponent merkezinden dışa doğrudur (gövdeye binmesin);
+ *  - ama etiket bu yönde kart dış hattına taşacak/temas edecekse, aynı sıradaki
+ *    (aynı yön grubundaki) TÜM etiketler simetrik biçimde içeri çevrilir.
+ *  - Etiketler birbirine ve kart çizgisine binmez (aç-gözlü çakışma önleme).
  */
 function drawPadLabelsOutside(ctx: CanvasRenderingContext2D, s: RenderState) {
   const { view, project } = s
+  // Kapalıysa: yer olmasa da (çakışsa/dışarı taşsa da) etiketler her zaman gösterilir.
+  // Açıksa (varsayılan): sığmayan bileşenlerin TÜM pin adları birlikte gizlenir.
+  const autoHide = project.settings.padLabelAutoHideCrowded !== false
   const fontPx = Math.min(12, Math.max(8, view.scale * 0.9))
   ctx.font = `${fontPx}px system-ui, sans-serif`
   ctx.textAlign = 'center'
@@ -893,6 +981,31 @@ function drawPadLabelsOutside(ctx: CanvasRenderingContext2D, s: RenderState) {
         Math.abs(d.y - r.y) * 2 < d.h + r.h + 2
     )
 
+  // Kart poligonu (dünya mm) — etiketin karta sığıp sığmadığı kontrolü
+  const boardPoly = boardPolygonWorld(project)
+  const marginMm = (project.board.outlineWidth ?? 0.3) / 2 + 0.15
+  /** Ekran-uzayı etiket dikdörtgeni kartın içinde (kenara değmeden) mi? */
+  const insideBoard = (r: { x: number; y: number; w: number; h: number }): boolean => {
+    if (boardPoly.length < 3) return true
+    const corners: Point[] = [
+      { x: r.x - r.w / 2, y: r.y - r.h / 2 },
+      { x: r.x + r.w / 2, y: r.y - r.h / 2 },
+      { x: r.x + r.w / 2, y: r.y + r.h / 2 },
+      { x: r.x - r.w / 2, y: r.y + r.h / 2 }
+    ].map((c) => screenToWorld(view, c))
+    return corners.every(
+      (c) => pointInPolygon(c, boardPoly) && distToPolygonEdge(c, boardPoly) >= marginMm
+    )
+  }
+
+  const drawOne = (rect: { x: number; y: number; w: number; h: number }, text: string) => {
+    ctx.fillStyle = 'rgba(0,0,0,0.62)'
+    ctx.fillRect(rect.x - rect.w / 2, rect.y - rect.h / 2, rect.w, rect.h)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(text, rect.x, rect.y)
+    drawn.push(rect)
+  }
+
   for (const comp of project.components) {
     if (comp.side === 'top' && !s.visibleLayers.top && !s.visibleLayers['top-silk']) continue
     if (comp.side === 'bottom' && !s.visibleLayers.bottom && !s.visibleLayers['bottom-silk']) continue
@@ -900,33 +1013,123 @@ function drawPadLabelsOutside(ctx: CanvasRenderingContext2D, s: RenderState) {
     if (!fp) continue
     const bb = componentBBox(comp, fp)
     const center = worldToScreen(view, { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 })
+    // Yalnızca kullanıcı tanımlı (özel) footprint'lerde, footprint editöründe
+    // elle belirlenmiş etiket konumu varsa onu kullan (ayar açıksa)
+    const respectCustomPos =
+      project.settings.padLabelRespectCustomFootprintPos !== false && !builtinFootprintIds.has(fp.id)
+    // Yön karşılaştırmasını bbox yarı-genişlik/yarı-yükseklikle normalize et:
+    // uzun-dar (iki kolonlu DIP gibi) gövdelerde uçtaki pad'ler merkeze
+    // uzaklık yüzünden yanlışlıkla üst/alt yöne kaymasın — kendi kolonunda kalsın
+    const halfW = Math.max(bb.width / 2, 0.001) * view.scale
+    const halfH = Math.max(bb.height / 2, 0.001) * view.scale
+
+    // 1. geçiş: pad başına yön (baskın eksene yaslanır → sıralar simetrik ve
+    // hizalı görünür) + boyutlar; yön grubuna ayır
+    interface Cand {
+      pad: import('../types').PadDef
+      pos: Point
+      padHalf: number
+      dx: number
+      dy: number
+      w: number
+      h: number
+      key: string
+    }
+    const cands: Cand[] = []
+    // Footprint editöründe elle konumlanmış etiketler (ayar açıksa); bunlar da
+    // diğerleriyle AYNI "sığıyor mu" kontrolüne tabidir — bileşenin geri kalanı
+    // sığmıyorsa bunlar da birlikte gizlenir (istisna yok)
+    const customRects: { rect: { x: number; y: number; w: number; h: number }; name: string }[] = []
     for (const pad of fp.pads) {
       if (pad.name.startsWith('MH')) continue
+      // Footprint editöründe etiket konumu ELLE belirlendiyse (ve ayar açıksa) orayı kullan
+      if (respectCustomPos && (pad.nameDx !== undefined || pad.nameDy !== undefined)) {
+        const lp = worldToScreen(
+          view,
+          localToWorld(comp, { x: pad.x + (pad.nameDx ?? 0), y: pad.y + (pad.nameDy ?? 0) })
+        )
+        const w = ctx.measureText(pad.name).width + 6
+        const h = fontPx + 4
+        customRects.push({ rect: { x: lp.x, y: lp.y, w, h }, name: pad.name })
+        continue
+      }
       const pos = worldToScreen(view, padWorldPos(comp, pad))
       const size = padWorldSize(comp, pad)
       const padHalf = (Math.max(size.width, size.height) / 2) * view.scale
-      // Yön: pad'den komponent merkezine ters (dışa doğru)
       let dx = pos.x - center.x
       let dy = pos.y - center.y
-      const len = Math.hypot(dx, dy)
-      if (len < 0.001) { dx = 0; dy = -1 } else { dx /= len; dy /= len }
+      if (Math.hypot(dx, dy) < 0.001) { dx = 0; dy = -1 }
+      // Baskın eksene yasla (bbox oranına göre normalize) → iki kolonlu/tek
+      // sıralı gövdelerde tüm pad'ler kendi kenarına hizalı kalır
+      const ndx = dx / halfW
+      const ndy = dy / halfH
+      if (Math.abs(ndx) >= Math.abs(ndy)) { dx = Math.sign(dx) || 1; dy = 0 }
+      else { dy = Math.sign(dy) || -1; dx = 0 }
       const w = ctx.measureText(pad.name).width + 6
       const h = fontPx + 4
-      // Pad'in hemen dışına yerleştir; çakışırsa biraz daha dışarı it, olmazsa atla
-      let placed: { x: number; y: number; w: number; h: number } | null = null
-      for (let step = 0; step < 4; step++) {
-        const gap =
-          padHalf + 4 + step * (h * 0.95) + (Math.abs(dx) >= Math.abs(dy) ? w / 2 : h / 2)
-        const rect = { x: pos.x + dx * gap, y: pos.y + dy * gap, w, h }
-        if (!overlaps(rect)) { placed = rect; break }
-      }
-      if (!placed) continue
-      ctx.fillStyle = 'rgba(0,0,0,0.62)'
-      ctx.fillRect(placed.x - w / 2, placed.y - h / 2, w, h)
-      ctx.fillStyle = '#ffffff'
-      ctx.fillText(pad.name, placed.x, placed.y)
-      drawn.push(placed)
+      cands.push({ pad, pos, padHalf, dx, dy, w, h, key: `${dx},${dy}` })
     }
+
+    // Grup (sıra) bazında ortak mesafe: en büyük pad yarıçapı → tüm etiketler
+    // pad kenarından EŞİT uzaklıkta, kenar hizalı başlar
+    const groupGap = new Map<string, number>()
+    for (const c of cands) {
+      groupGap.set(c.key, Math.max(groupGap.get(c.key) ?? 0, c.padHalf + 4))
+    }
+    // Grup karta sığmıyorsa (dış hattı aşar/değer) simetrik olarak içeri çevir
+    const flipGroup = new Map<string, boolean>()
+    for (const c of cands) {
+      if (flipGroup.get(c.key)) continue
+      const gapBase = groupGap.get(c.key)!
+      const extent = c.dx !== 0 ? c.w : c.h
+      const rect = {
+        x: c.pos.x + c.dx * (gapBase + extent / 2),
+        y: c.pos.y + c.dy * (gapBase + extent / 2),
+        w: c.w,
+        h: c.h
+      }
+      if (!insideBoard(rect)) flipGroup.set(c.key, true)
+    }
+
+    // 2. geçiş: yerleştir — grup içindeki HER pad aynı yönde + aynı mesafede
+    // (kenar hizalı, tam eşit aralıklı). Yer yetersizse (çakışma/dışarı taşma)
+    // parça göstermek yerine bileşenin TÜM pin adları birden gizlenir —
+    // yarım/karışık etiketlenme yerine net "sığıyor / sığmıyor" davranışı
+    const compRects: { rect: { x: number; y: number; w: number; h: number }; name: string }[] = []
+    let compFits = true
+    // NOT: aynı bileşenin kendi etiketleri birbiriyle de çakışabilir (ör. çok
+    // pinli yoğun paketler) — bu yüzden `overlaps` hem önceki bileşenlerin
+    // (drawn) hem de BU bileşenin şimdiye kadar toplanan etiketleriyle
+    // (compRects) karşılaştırılır; yalnızca dışarıdan gelenlerle kıyaslamak
+    // yoğun paketlerdeki iç içe geçmeyi kaçırırdı.
+    const overlapsAny = (r: { x: number; y: number; w: number; h: number }) =>
+      overlaps(r) ||
+      compRects.some(
+        (d) =>
+          Math.abs(d.rect.x - r.x) * 2 < d.rect.w + r.w + 2 &&
+          Math.abs(d.rect.y - r.y) * 2 < d.rect.h + r.h + 2
+      )
+    for (const c of cands) {
+      const flipped = flipGroup.get(c.key) === true
+      const gapBase = groupGap.get(c.key)!
+      const dir = flipped ? { dx: -c.dx, dy: -c.dy } : { dx: c.dx, dy: c.dy }
+      const extent = dir.dx !== 0 ? c.w : c.h
+      const rect = {
+        x: c.pos.x + dir.dx * (gapBase + extent / 2),
+        y: c.pos.y + dir.dy * (gapBase + extent / 2),
+        w: c.w,
+        h: c.h
+      }
+      if (autoHide && (overlapsAny(rect) || !insideBoard(rect))) { compFits = false; break }
+      compRects.push({ rect, name: c.pad.name })
+    }
+    if (compFits) {
+      for (const cr of customRects) {
+        if (autoHide && (overlapsAny(cr.rect) || !insideBoard(cr.rect))) { compFits = false; break }
+        compRects.push(cr)
+      }
+    }
+    if (compFits) for (const r of compRects) drawOne(r.rect, r.name)
   }
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'

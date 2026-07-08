@@ -23,7 +23,18 @@ import { builtinFootprints, refDesPrefix } from '../library/footprints'
 import { useUserLibrary } from './userLibrary'
 import { runDrc } from '../core/drc'
 import { autorouteAll, type AutorouteOptions } from '../core/autoroute'
-import { ensureSymbols, pinsOnWire, removeStalePcbTraces, schematicConnectedPins, snapshotPadNets, syncSchematicNets } from '../schematic/model'
+import {
+  ensureSymbols,
+  pinsOnWire,
+  removeOrphanWires,
+  removeStalePcbTraces,
+  schematicConnectedPins,
+  snapshotPadNets,
+  symbolLayout,
+  symbolToWorld,
+  syncSchematicNets,
+  syncSchematicNetsAndPcb
+} from '../schematic/model'
 import { padWorldPos, padWorldSize, segPointDist } from '../core/geometry'
 import { t } from '../i18n'
 
@@ -40,6 +51,25 @@ export type DialogId =
 
 export type AppMode = 'pcb' | 'schematic' | 'board' | 'view3d'
 
+/** Şema editörü araçları (sol araç şeridinden seçilir) */
+export type SchTool = 'select' | 'wire' | 'net' | 'delete'
+/** Kart editörü araçları */
+export type BoardTool = 'select' | 'add-rect' | 'add-circle'
+/** 3B görünüm seçenekleri */
+export interface View3dOpts {
+  showComponents: boolean
+  showTraces: boolean
+  showModels: boolean
+  showPinLabels: boolean
+}
+/** 3B görünüme sol şeritten iletilen tek seferlik komutlar */
+export type View3dRequest =
+  | { kind: 'view'; v: 'iso' | 'top' | 'bottom' | 'front' }
+  | { kind: 'export-png' }
+  | { kind: 'export-obj' }
+  | { kind: 'import-model' }
+  | null
+
 interface ClipboardData {
   components: ComponentInstance[]
   traces: TraceSegment[]
@@ -53,6 +83,14 @@ export interface EditorState {
   mode: AppMode
   selection: Selection
   tool: ToolId
+  /** Şema modu aracı (sol araç şeridi) */
+  schTool: SchTool
+  /** Kart editörü aracı (sol araç şeridi) */
+  boardTool: BoardTool
+  /** 3B görünüm seçenekleri (sol araç şeridi) */
+  view3dOpts: View3dOpts
+  /** 3B görünüme iletilen tek seferlik komut */
+  view3dRequest: View3dRequest
   activeLayer: CopperLayer
   visibleLayers: Record<VisibleLayer, boolean>
   /** Yerleştirilmekte olan footprint (kütüphaneden seçilen) */
@@ -107,6 +145,10 @@ export interface EditorState {
   redo: () => void
   setMode: (m: AppMode) => void
   setTool: (tool: ToolId) => void
+  setSchTool: (tool: SchTool) => void
+  setBoardTool: (tool: BoardTool) => void
+  setView3dOpts: (patch: Partial<View3dOpts>) => void
+  requestView3d: (req: View3dRequest) => void
   setActiveLayer: (layer: CopperLayer) => void
   toggleLayer: (layer: VisibleLayer) => void
   setStatus: (msg: string) => void
@@ -167,7 +209,8 @@ export interface EditorState {
   resetProject: () => void
   runDrcNow: () => void
   autoroute: () => { routed: number; failed: string[]; log: string[] }
-  addCustomFootprint: (fp: Footprint) => void
+  /** Footprint'i projeye göm/güncelle. Karta gömülüyse uyumsuz komponentleri otomatik kaldırır. */
+  addCustomFootprint: (fp: Footprint) => { removed: number; prunedNets: number }
   removeCustomFootprint: (id: string) => void
 }
 
@@ -189,6 +232,15 @@ export const useStore = create<EditorState>((set, get) => ({
   mode: 'pcb',
   selection: emptySelection(),
   tool: 'select',
+  schTool: 'select',
+  boardTool: 'select',
+  view3dOpts: {
+    showComponents: true,
+    showTraces: true,
+    showModels: true,
+    showPinLabels: false
+  },
+  view3dRequest: null,
   activeLayer: 'top',
   visibleLayers: { ...defaultVisible },
   placingFootprintId: null,
@@ -329,6 +381,35 @@ export const useStore = create<EditorState>((set, get) => ({
       statusMessage: toolHint(tool)
     }),
 
+  setSchTool: (tool) =>
+    set({
+      schTool: tool,
+      statusMessage:
+        tool === 'wire'
+          ? t('Tel çizimi — pin ucuna tıklayıp başlayın, çift tık/Enter: bitir')
+          : tool === 'net'
+            ? t('Net atama — pin ucuna veya tele tıklayın')
+            : tool === 'delete'
+              ? t('Silme — tel veya sembole tıklayın')
+              : t('Seçim — sembol/tel tıkla, sürükle, R: döndür, Del: sil')
+    }),
+
+  setBoardTool: (tool) =>
+    set({
+      boardTool: tool,
+      statusMessage:
+        tool === 'add-rect'
+          ? t('Dikdörtgen kesim/şekil — kart üstüne sürükleyin')
+          : tool === 'add-circle'
+            ? t('Daire kesim — kart üstüne sürükleyin')
+            : t('Seç / köşe düzenle — köşe ve ölçüleri sürükleyin')
+    }),
+
+  setView3dOpts: (patch) =>
+    set((state) => ({ view3dOpts: { ...state.view3dOpts, ...patch } })),
+
+  requestView3d: (req) => set({ view3dRequest: req }),
+
   setActiveLayer: (layer) => {
     if (layer === 'bottom' && get().project.board.layerCount === 1) {
       set({ statusMessage: t('Tek katmanlı kart — alt bakır kapalı (Kart ayarlarından değiştirin)') })
@@ -380,6 +461,19 @@ export const useStore = create<EditorState>((set, get) => ({
         }
       }
     }
+    // Silinen komponentlerin şemadaki pin konumları (yetim tel temizliği için)
+    const deletedPinPositions: Point[] = []
+    if (sel.componentIds.length > 0) {
+      for (const sym of project.schematic.symbols) {
+        if (!sel.componentIds.includes(sym.componentId)) continue
+        const comp = project.components.find((c) => c.id === sym.componentId)
+        const fp = comp && getFootprint(comp.footprintId)
+        if (!fp) continue
+        for (const pin of symbolLayout(fp).pins) {
+          deletedPinPositions.push(symbolToWorld(sym, pin.end))
+        }
+      }
+    }
     get().commit((p) => {
       p.components = p.components.filter((c) => !sel.componentIds.includes(c.id))
       p.traces = p.traces.filter((tr) => !sel.traceIds.includes(tr.id))
@@ -391,6 +485,11 @@ export const useStore = create<EditorState>((set, get) => ({
       p.schematic.symbols = p.schematic.symbols.filter(
         (s) => !sel.componentIds.includes(s.componentId)
       )
+      // Silinen komponentin şemada asılı kalan tellerini kaldır + netleri tazele
+      if (sel.componentIds.length > 0) {
+        removeOrphanWires(p, getFootprint, deletedPinPositions)
+        syncSchematicNetsAndPcb(p, getFootprint)
+      }
       if (clearNets && affectedPads.length > 0) {
         const schemPins = schematicConnectedPins(p, getFootprint)
         for (const pd of affectedPads) {
@@ -796,13 +895,27 @@ export const useStore = create<EditorState>((set, get) => ({
   },
 
   assignNet: (compId, padName, net) => {
+    const { getFootprint } = get()
     get().commit((p) => {
       const comp = p.components.find((c) => c.id === compId)
       if (comp) {
         if (net) comp.padNets[padName] = net
         else delete comp.padNets[padName]
+        // Elle atama şema provenansını geçersiz kılar (senkron üzerine yazmasın)
+        if (p.schematic.pinNets) delete p.schematic.pinNets[`${compId}::${padName}`]
       }
     }, net ? t('Net atandı: {net}', { net }) : t('Net kaldırıldı'))
+    // Pin şemada bir tele bağlıysa bilgilendir: senkron yeniden atayabilir
+    if (!net) {
+      const p = get().project
+      if (schematicConnectedPins(p, getFootprint).has(`${compId}::${padName}`)) {
+        set({
+          statusMessage: t(
+            'Not: bu pin şemada bir tele bağlı — tel durdukça senkron neti yeniden atayabilir'
+          )
+        })
+      }
+    }
   },
 
   clearAllConnections: (scope = 'all') => {
@@ -978,11 +1091,52 @@ export const useStore = create<EditorState>((set, get) => ({
   },
 
   addCustomFootprint: (fp) => {
+    const { project, getFootprint } = get()
+    const oldFp = project.customFootprints.find((f) => f.id === fp.id)
+    // Footprint daha önce projeye gömülüyse (kartta kullanılıyorsa) eski/yeni pad
+    // adlarını karşılaştır: hiç ortak pad kalmadıysa bu footprint'i kullanan
+    // komponentler artık anlamsız (uyumsuz) sayılır ve otomatik kaldırılır.
+    const oldNames = new Set((oldFp?.pads ?? []).map((p) => p.name))
+    const newNames = new Set(fp.pads.map((p) => p.name))
+    const hasOverlap = !oldFp || oldNames.size === 0 || [...oldNames].some((n) => newNames.has(n))
+    const incompatibleIds = !hasOverlap
+      ? project.components.filter((c) => c.footprintId === fp.id).map((c) => c.id)
+      : []
+    const deletedPinPositions: Point[] = []
+    if (incompatibleIds.length > 0) {
+      for (const sym of project.schematic.symbols) {
+        if (!incompatibleIds.includes(sym.componentId)) continue
+        const comp = project.components.find((c) => c.id === sym.componentId)
+        const symFp = comp && getFootprint(comp.footprintId)
+        if (!symFp) continue
+        for (const pin of symbolLayout(symFp).pins) {
+          deletedPinPositions.push(symbolToWorld(sym, pin.end))
+        }
+      }
+    }
+    let prunedNets = 0
     get().commit((p) => {
       const existing = p.customFootprints.findIndex((f) => f.id === fp.id)
       if (existing >= 0) p.customFootprints[existing] = fp
       else p.customFootprints.push(fp)
+
+      if (incompatibleIds.length > 0) {
+        p.components = p.components.filter((c) => !incompatibleIds.includes(c.id))
+        p.schematic.symbols = p.schematic.symbols.filter(
+          (s) => !incompatibleIds.includes(s.componentId)
+        )
+        removeOrphanWires(p, getFootprint, deletedPinPositions)
+      }
+      // Kalan komponentlerde artık var olmayan pad adlarına ait net atamalarını temizle
+      for (const c of p.components) {
+        if (c.footprintId !== fp.id) continue
+        for (const key of Object.keys(c.padNets)) {
+          if (!newNames.has(key)) { delete c.padNets[key]; prunedNets++ }
+        }
+      }
+      if (incompatibleIds.length > 0 || prunedNets > 0) syncSchematicNetsAndPcb(p, getFootprint)
     }, t('Özel footprint kaydedildi: {name}', { name: fp.name }))
+    return { removed: incompatibleIds.length, prunedNets }
   },
 
   removeCustomFootprint: (id) => {

@@ -31,7 +31,15 @@ export function SettingsDialog() {
   const clearNetsSchematic = useStore((s) => s.project.settings.clearNetsOnPathDeleteSchematic ?? true)
   const removePcbTracesOnSchematicChange = useStore((s) => s.project.settings.removePcbTracesOnSchematicChange ?? true)
   const schematicStandardSymbols = useStore((s) => s.project.settings.schematicStandardSymbols ?? true)
-  const padLabelMode = useStore((s) => s.project.settings.padLabelMode ?? 'zoomed-out')
+  const padLabelMode = useStore((s) => s.project.settings.padLabelMode ?? 'off')
+  const pinSilkLabels = useStore((s) => s.project.settings.pinSilkLabels !== false)
+  const pinSilkShowOnPad = useStore((s) => s.project.settings.pinSilkShowOnPad !== false)
+  const padLabelRespectCustomFootprintPos = useStore(
+    (s) => s.project.settings.padLabelRespectCustomFootprintPos ?? true
+  )
+  const padLabelAutoHideCrowded = useStore(
+    (s) => s.project.settings.padLabelAutoHideCrowded ?? true
+  )
   const updateSettings = useStore((s) => s.updateSettings)
   const clearAllConnections = useStore((s) => s.clearAllConnections)
   const confirm = usePrompt((s) => s.confirm)
@@ -213,8 +221,30 @@ export function SettingsDialog() {
           <h4>{t('Görünüm')}</h4>
           <div className="settings-row">
             <span className="settings-label">
-              {t('Pad adı etiketleri')}
-              <small>{t('Uzaklaşınca pad adları pad içinde okunmaz; bu seçenek adları pad\'in yanında hizalı ve üst üste binmeden gösterir.')}</small>
+              {t('Silk pin adları')}
+              <small>{t('Her pad\'in adı/numarası silkscreen katmanında pad\'in içine yazı olarak çizilir ve tüm silk dışa aktarımlarına (Gerber/SVG/PNG) dahil edilir. Yerleşik ve kullanıcı footprint\'lerinin hepsinde otomatiktir. Pinlerin varsayılan gösterimidir. Varsayılan: açık')}</small>
+            </span>
+            <Toggle
+              checked={pinSilkLabels}
+              onChange={(v) => updateSettings((p) => { p.settings.pinSilkLabels = v })}
+            />
+          </div>
+          {pinSilkLabels && (
+            <div className="settings-row settings-row-sub">
+              <span className="settings-label">
+                {t('Pad\'e yakınlaşınca adı pad içinde de göster')}
+                <small>{t('Silk pin adları açıkken, pad\'e yeterince yakınlaşıldığında ad silk yazısına ek olarak pad\'in içinde de gösterilir. Kapalıysa yalnızca silk yazısı (pad yanı) görünür. Varsayılan: açık')}</small>
+              </span>
+              <Toggle
+                checked={pinSilkShowOnPad}
+                onChange={(v) => updateSettings((p) => { p.settings.pinSilkShowOnPad = v })}
+              />
+            </div>
+          )}
+          <div className="settings-row">
+            <span className="settings-label">
+              {t('Editör pin adları (ekran üstü)')}
+              <small>{t('Yalnız ekranda görünen (dışa aktarılmayan) pad adı kaplaması. Silk pin adlarından ayrıdır; ekstra bir "editör görünümü" olarak istenirse açılır. Varsayılan: kapalı (yalnız pad içi).')}</small>
             </span>
             <select
               value={padLabelMode}
@@ -224,10 +254,40 @@ export function SettingsDialog() {
                 })
               }
             >
-              <option value="off">{t('Kapalı (yalnız pad içi)')}</option>
-              <option value="zoomed-out">{t('Uzaklaşınca yanında (varsayılan)')}</option>
+              <option value="off">{t('Kapalı (yalnız pad içi, varsayılan)')}</option>
+              <option value="zoomed-out">{t('Uzaklaşınca yanında')}</option>
               <option value="always">{t('Her zaman yanında')}</option>
             </select>
+          </div>
+
+          <div className="settings-row">
+            <span className="settings-label">
+              {t('Özel footprint etiket konumuna öncelik ver')}
+              <small>
+                {t(
+                  'Kullanıcı tanımlı footprint\'lerde footprint editöründe elle taşınmış pad adı varsa PCB\'de de aynı konumda gösterilir. Kapalıysa PCB her zaman otomatik/simetrik yerleşimi kullanır. Yerleşik footprint\'leri etkilemez. Varsayılan: açık'
+                )}
+              </small>
+            </span>
+            <Toggle
+              checked={padLabelRespectCustomFootprintPos}
+              onChange={(v) => updateSettings((p) => { p.settings.padLabelRespectCustomFootprintPos = v })}
+            />
+          </div>
+
+          <div className="settings-row">
+            <span className="settings-label">
+              {t('Sığmayınca pin adlarını otomatik gizle')}
+              <small>
+                {t(
+                  'Kart dışında gösterilen pin adları çakışacak veya kart dışına taşacak kadar sıkışırsa, o bileşenin tüm pin adları (özel konumlananlar dahil) birlikte gizlenir. Kapalıysa yer olmasa da her zaman gösterilir. Varsayılan: açık'
+                )}
+              </small>
+            </span>
+            <Toggle
+              checked={padLabelAutoHideCrowded}
+              onChange={(v) => updateSettings((p) => { p.settings.padLabelAutoHideCrowded = v })}
+            />
           </div>
         </div>
 

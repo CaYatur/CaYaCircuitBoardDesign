@@ -5,9 +5,11 @@
 import type { CopperLayer, Footprint, Project } from '../types'
 import {
   copperLayerGeometry,
+  layerPads,
   outlinePoints,
   silkLayerGeometry,
-  type CopperPrimitive
+  type CopperPrimitive,
+  type PadFlash
 } from './exportGeometry'
 
 // Koordinat: mm × 10^6, FSLAX46Y46. Y ekseni Gerber'de yukarı pozitif olduğu
@@ -173,6 +175,54 @@ export function gerberSilkLayer(
   return gb.build()
 }
 
+/** Bir pad'i (opsiyonel genişleme ile) uygun aperture'la flash eder */
+function flashPad(gb: GerberBuilder, p: PadFlash, inflate: number): void {
+  const w = p.width + 2 * inflate
+  const h = p.height + 2 * inflate
+  let d: number
+  if (p.shape === 'circle') d = gb.circleAp(Math.max(w, h))
+  else if (p.shape === 'rect') d = gb.rectAp(w, h)
+  else d = gb.ovalAp(w, h)
+  gb.flash(p.x, p.y, d)
+}
+
+/**
+ * Lehim maskesi (solder mask) Gerber çıktısı — pad'lerin açık kalacağı
+ * bölgeler. Standart ~0.05 mm maske genişlemesi uygulanır (pad kenarında
+ * temiz bakır açığı). Delikli pad'ler her iki yüzde de açılır.
+ */
+export function gerberSolderMask(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  side: CopperLayer
+): string {
+  const fn = side === 'top' ? 'Soldermask,Top' : 'Soldermask,Bot'
+  const gb = new GerberBuilder(fn, project.board.height)
+  for (const p of layerPads(project, getFootprint, side)) {
+    flashPad(gb, p, 0.05)
+  }
+  return gb.build()
+}
+
+/**
+ * Lehim pastası (solder paste / stencil) Gerber çıktısı — yalnız SMD pad'ler
+ * (delikli pad'lere ve via'lara pasta uygulanmaz). Stencil kesimi için pad
+ * boyutunda açılır.
+ */
+export function gerberSolderPaste(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  side: CopperLayer
+): string {
+  const fn = side === 'top' ? 'Paste,Top' : 'Paste,Bot'
+  const gb = new GerberBuilder(fn, project.board.height)
+  for (const p of layerPads(project, getFootprint, side)) {
+    if (!p.smd) continue
+    flashPad(gb, p, 0)
+  }
+  return gb.build()
+}
+
 /** Kart dış hattı (Edge.Cuts) Gerber çıktısı */
 export function gerberOutline(project: Project): string {
   const gb = new GerberBuilder('Profile,NP', project.board.height)
@@ -187,13 +237,23 @@ export function gerberFileSet(
   getFootprint: (id: string) => Footprint | undefined
 ): { name: string; content: string }[] {
   const base = sanitize(project.name)
-  return [
+  const single = project.board.layerCount === 1
+  const files = [
     { name: `${base}-F_Cu.gtl`, content: gerberCopperLayer(project, getFootprint, 'top') },
-    { name: `${base}-B_Cu.gbl`, content: gerberCopperLayer(project, getFootprint, 'bottom') },
-    { name: `${base}-F_Silk.gto`, content: gerberSilkLayer(project, getFootprint, 'top') },
-    { name: `${base}-B_Silk.gbo`, content: gerberSilkLayer(project, getFootprint, 'bottom') },
-    { name: `${base}-Edge_Cuts.gm1`, content: gerberOutline(project) }
+    { name: `${base}-F_Mask.gts`, content: gerberSolderMask(project, getFootprint, 'top') },
+    { name: `${base}-F_Paste.gtp`, content: gerberSolderPaste(project, getFootprint, 'top') },
+    { name: `${base}-F_Silk.gto`, content: gerberSilkLayer(project, getFootprint, 'top') }
   ]
+  if (!single) {
+    files.push(
+      { name: `${base}-B_Cu.gbl`, content: gerberCopperLayer(project, getFootprint, 'bottom') },
+      { name: `${base}-B_Mask.gbs`, content: gerberSolderMask(project, getFootprint, 'bottom') },
+      { name: `${base}-B_Paste.gbp`, content: gerberSolderPaste(project, getFootprint, 'bottom') },
+      { name: `${base}-B_Silk.gbo`, content: gerberSilkLayer(project, getFootprint, 'bottom') }
+    )
+  }
+  files.push({ name: `${base}-Edge_Cuts.gm1`, content: gerberOutline(project) })
+  return files
 }
 
 export function sanitize(name: string): string {

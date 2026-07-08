@@ -1,28 +1,14 @@
 // ─── Üst araç çubuğu ──────────────────────────────────────────────────────
 
 import { useStore } from '../state/store'
-import type { ToolId } from '../types'
 import { saveProjectFile, openProjectFile } from '../io/project'
 import { useRecents } from '../state/recents'
 import { usePrompt } from './prompts'
 import { useI18n, useT } from '../i18n'
 
-const tools: { id: ToolId; icon: string; label: string; key: string }[] = [
-  { id: 'select', icon: '⬚', label: 'Seç', key: 'S' },
-  { id: 'trace', icon: '〰', label: 'İz', key: 'T' },
-  { id: 'via', icon: '◎', label: 'Via', key: 'V' },
-  { id: 'zone', icon: '▦', label: 'Alan', key: '' },
-  { id: 'text', icon: 'A', label: 'Yazı', key: '' },
-  { id: 'net', icon: '⚡', label: 'Net', key: 'N' },
-  { id: 'measure', icon: '📏', label: 'Ölçüm', key: 'M' },
-  { id: 'delete', icon: '✕', label: 'Sil', key: '' }
-]
-
 export function Toolbar() {
   const mode = useStore((s) => s.mode)
   const setMode = useStore((s) => s.setMode)
-  const tool = useStore((s) => s.tool)
-  const setTool = useStore((s) => s.setTool)
   const undo = useStore((s) => s.undo)
   const redo = useStore((s) => s.redo)
   const canUndo = useStore((s) => s.past.length > 0)
@@ -37,12 +23,31 @@ export function Toolbar() {
   const updateSettings = useStore((s) => s.updateSettings)
   const gridSize = useStore((s) => s.project.settings.gridSize)
   const gridStyle = useStore((s) => s.project.settings.gridStyle ?? 'lines')
+  const pinSilk = useStore((s) => s.project.settings.pinSilkLabels !== false)
+  const padLabelMode = useStore((s) => s.project.settings.padLabelMode ?? 'off')
+  // Pin gösterim modu: silk (pad yanı, üretim) / editör (ekran kaplaması) /
+  // kapalı (silk yok; yalnız yaklaşınca pad içinde ad)
+  const pinMode: 'silk' | 'editor' | 'closed' =
+    pinSilk ? 'silk' : padLabelMode !== 'off' ? 'editor' : 'closed'
   const ask = usePrompt((s) => s.ask)
+  const confirm = usePrompt((s) => s.confirm)
   const lang = useI18n((s) => s.lang)
   const setLang = useI18n((s) => s.setLang)
   const t = useT()
 
+  /** Kaydedilmemiş değişiklik varsa üzerine yazmadan önce onay iste */
+  const confirmDiscard = async (): Promise<boolean> => {
+    const st = useStore.getState()
+    if (!st.dirty) return true
+    return confirm(t('Kaydedilmemiş değişiklikler var'), {
+      message: t('Devam ederseniz mevcut projedeki kaydedilmemiş değişiklikler kaybolur. Önce Kaydet\'e basabilirsiniz.'),
+      confirmLabel: 'Devam (kaydetme)',
+      danger: true
+    })
+  }
+
   const handleNew = async () => {
+    if (!(await confirmDiscard())) return
     const name = await ask(t('Yeni proje adı'), t('Yeni Proje'))
     if (name === null) return
     resetProject()
@@ -56,6 +61,7 @@ export function Toolbar() {
   }
 
   const handleOpen = async () => {
+    if (!(await confirmDiscard())) return
     try {
       const res = await openProjectFile()
       if (res) {
@@ -147,20 +153,6 @@ export function Toolbar() {
 
       {mode === 'pcb' && (
         <>
-          <div className="toolbar-group tools">
-            {tools.map((tl) => (
-              <button
-                key={tl.id}
-                className={tool === tl.id ? 'active' : ''}
-                title={`${t(tl.label)}${tl.key ? ` (${tl.key})` : ''}`}
-                onClick={() => setTool(tl.id)}
-              >
-                <span className="tool-icon">{tl.icon}</span>
-                <span className="tool-label">{t(tl.label)}</span>
-              </button>
-            ))}
-          </div>
-
           <div className="toolbar-group">
             <label className="layer-select">
               {t('Izgara')}:
@@ -194,6 +186,24 @@ export function Toolbar() {
                 <option value="lines">{t('Çizgi')}</option>
                 <option value="dots">{t('Nokta')}</option>
                 <option value="off">{t('Kapalı')}</option>
+              </select>
+            </label>
+            <label className="layer-select">
+              {t('Pin')}:
+              <select
+                value={pinMode}
+                title={t('Pin adı gösterimi: silk (pad yanı, üretim), editör (ekran kaplaması) veya kapalı (yalnız yaklaşınca pad içinde)')}
+                onChange={(e) => {
+                  const m = e.target.value as 'silk' | 'editor' | 'closed'
+                  updateSettings((p) => {
+                    p.settings.pinSilkLabels = m === 'silk'
+                    p.settings.padLabelMode = m === 'editor' ? 'zoomed-out' : 'off'
+                  })
+                }}
+              >
+                <option value="silk">{t('Silk (üretim)')}</option>
+                <option value="editor">{t('Editör (ekran)')}</option>
+                <option value="closed">{t('Kapalı')}</option>
               </select>
             </label>
           </div>

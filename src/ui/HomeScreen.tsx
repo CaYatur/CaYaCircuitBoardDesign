@@ -7,6 +7,7 @@ import { useStore } from '../state/store'
 import { useRecents, type RecentEntry } from '../state/recents'
 import { openProjectFile, validateProject } from '../io/project'
 import { isDesktop } from '../io/native'
+import { usePrompt } from './prompts'
 import { useT } from '../i18n'
 
 function timeAgo(at: number, t: (k: string, p?: any) => string): string {
@@ -31,6 +32,7 @@ export function HomeScreen() {
   const getWebJson = useRecents((s) => s.getWebJson)
   const addWeb = useRecents((s) => s.addWeb)
   const clear = useRecents((s) => s.clear)
+  const confirm = usePrompt((s) => s.confirm)
   const t = useT()
 
   useEffect(() => {
@@ -39,7 +41,25 @@ export function HomeScreen() {
 
   if (!show) return null
 
+  /**
+   * Mevcut projede kaydedilmemiş değişiklik varsa, üzerine yeni/başka proje
+   * açmadan önce onay iste (yanlışlıkla kaybolmayı önler).
+   */
+  const confirmDiscard = async (): Promise<boolean> => {
+    const st = useStore.getState()
+    if (!st.dirty) return true
+    return confirm(t('Kaydedilmemiş değişiklikler var'), {
+      message: t(
+        'Mevcut projedeki ("{name}") kaydedilmemiş değişiklikler devam ederseniz KAYBOLUR. Kaydetmek için önce "Editöre geç" ile dönüp Kaydet\'e basın.',
+        { name: st.project.name }
+      ),
+      confirmLabel: 'Devam (kaydetme)',
+      danger: true
+    })
+  }
+
   const openRecent = async (e: RecentEntry) => {
+    if (!(await confirmDiscard())) return
     try {
       if (e.path) {
         const res = await openProjectFile({ path: e.path })
@@ -58,6 +78,7 @@ export function HomeScreen() {
   }
 
   const openDialog = async () => {
+    if (!(await confirmDiscard())) return
     try {
       const res = await openProjectFile()
       if (res) {
@@ -82,8 +103,13 @@ export function HomeScreen() {
         </div>
 
         <div className="home-actions">
-          <button className="home-action home-action-primary" onClick={() => resetProject()}>
-            <span className="home-action-icon">🗋</span>
+          <button
+            className="home-action home-action-primary"
+            onClick={async () => {
+              if (await confirmDiscard()) resetProject()
+            }}
+          >
+            <span className="home-action-icon">➕</span>
             <span className="home-action-title">{t('Yeni Proje')}</span>
             <span className="home-action-desc">{t('Boş bir kartla başla')}</span>
           </button>

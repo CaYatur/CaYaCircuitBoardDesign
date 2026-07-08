@@ -6,9 +6,28 @@ import { useState } from 'react'
 import { useStore } from '../state/store'
 import type { CopperLayer } from '../types'
 import { saveTextFile, saveFilesToDirectory, type ExportFile } from '../io/files'
-import { gerberFileSet, sanitize } from '../io/gerber'
+import {
+  gerberFileSet,
+  gerberCopperLayer,
+  gerberSolderMask,
+  gerberSolderPaste,
+  gerberSilkLayer,
+  gerberOutline,
+  sanitize
+} from '../io/gerber'
 import { excellonDrill } from '../io/excellon'
-import { svgCopperLayer, svgSilkLayer, svgOutline, svgComposite, svgOutlineTraces } from '../io/svg'
+import {
+  svgCopperLayer,
+  svgSilkLayer,
+  svgSolderPaste,
+  svgSolderMask,
+  svgAssembly,
+  svgOutline,
+  svgComposite,
+  svgOutlineTraces,
+  svgFullBoard
+} from '../io/svg'
+import { dxfBoard } from '../io/dxf'
 import {
   defaultGcodeOptions,
   gcodeDrill,
@@ -109,7 +128,7 @@ export function ExportDialog() {
         {section === 'gerber' && (
           <div className="export-body">
             <p>
-              {t('PCB üreticilerine (JLCPCB, PCBWay vb.) gönderilecek standart üretim dosyaları: üst/alt bakır, üst/alt silkscreen, kart sınırı ve Excellon delik dosyası.')}
+              {t('PCB üreticilerine (JLCPCB, PCBWay vb.) gönderilecek eksiksiz üretim seti: üst/alt bakır, lehim maskesi, lehim pastası (stencil), silkscreen, kart sınırı ve Excellon delik dosyası.')}
             </p>
             <div className="export-buttons">
               <button
@@ -126,29 +145,32 @@ export function ExportDialog() {
                   })
                 }
               >
-                📦 {t('Tüm Gerber Setini Tek Klasöre Aktar (6 dosya)')}
+                📦 {t('Tüm Gerber Setini Tek Klasöre Aktar ({n} dosya)', { n: (singleLayer ? 5 : 9) + 1 })}
               </button>
             </div>
-            <h4>{t('Tek katman')}:</h4>
+            <h4>{t('Ayrı dosyalar')}:</h4>
             <div className="export-buttons">
               {(
                 [
-                  [t('Üst bakır') + ' (.gtl)', 0],
-                  [t('Alt bakır') + ' (.gbl)', 1],
-                  [t('Üst silk') + ' (.gto)', 2],
-                  [t('Alt silk') + ' (.gbo)', 3],
-                  [t('Kart sınırı') + ' (.gm1)', 4]
-                ] as [string, number][]
-              ).map(([label, idx]) => (
+                  [t('Üst bakır') + ' (.gtl)', `${base}-F_Cu.gtl`, () => gerberCopperLayer(project, getFootprint, 'top')],
+                  [t('Üst maske') + ' (.gts)', `${base}-F_Mask.gts`, () => gerberSolderMask(project, getFootprint, 'top')],
+                  [t('Üst pasta') + ' (.gtp)', `${base}-F_Paste.gtp`, () => gerberSolderPaste(project, getFootprint, 'top')],
+                  [t('Üst silk') + ' (.gto)', `${base}-F_Silk.gto`, () => gerberSilkLayer(project, getFootprint, 'top')],
+                  ...(!singleLayer
+                    ? ([
+                        [t('Alt bakır') + ' (.gbl)', `${base}-B_Cu.gbl`, () => gerberCopperLayer(project, getFootprint, 'bottom')],
+                        [t('Alt maske') + ' (.gbs)', `${base}-B_Mask.gbs`, () => gerberSolderMask(project, getFootprint, 'bottom')],
+                        [t('Alt pasta') + ' (.gbp)', `${base}-B_Paste.gbp`, () => gerberSolderPaste(project, getFootprint, 'bottom')],
+                        [t('Alt silk') + ' (.gbo)', `${base}-B_Silk.gbo`, () => gerberSilkLayer(project, getFootprint, 'bottom')]
+                      ] as [string, string, () => string][])
+                    : []),
+                  [t('Kart sınırı') + ' (.gm1)', `${base}-Edge_Cuts.gm1`, () => gerberOutline(project)]
+                ] as [string, string, () => string][]
+              ).map(([label, fname, make]) => (
                 <button
-                  key={label}
+                  key={fname}
                   disabled={busy}
-                  onClick={() =>
-                    run(label, async () => {
-                      const f = gerberFileSet(project, getFootprint)[idx]
-                      await saveTextFile(f.name, f.content)
-                    })
-                  }
+                  onClick={() => run(label, () => saveTextFile(fname, make()).then(() => {}))}
                 >
                   {label}
                 </button>
@@ -162,6 +184,20 @@ export function ExportDialog() {
                 }
               >
                 {t('Delikler')} (.drl)
+              </button>
+            </div>
+            <h4>{t('Mekanik')}:</h4>
+            <div className="export-buttons">
+              <button
+                disabled={busy}
+                title={t('Kart dış hattı + iç kesimler + delikler — mekanik CAD (Fusion 360, SolidWorks, AutoCAD) ve CNC/lazer için')}
+                onClick={() =>
+                  run(t('DXF (mekanik)'), () =>
+                    saveTextFile(`${base}-mekanik.dxf`, dxfBoard(project, getFootprint), 'application/dxf').then(() => {})
+                  )
+                }
+              >
+                📐 {t('DXF — dış hat + delikler')}
               </button>
             </div>
           </div>
@@ -222,6 +258,11 @@ export function ExportDialog() {
                         mime: 'image/svg+xml'
                       },
                       {
+                        name: `${base}-tam-kart.svg`,
+                        content: svgFullBoard(project, getFootprint),
+                        mime: 'image/svg+xml'
+                      },
+                      {
                         name: `${base}-sema.svg`,
                         content: schematicSvgContent(project, getFootprint),
                         mime: 'image/svg+xml'
@@ -237,6 +278,19 @@ export function ExportDialog() {
                         }),
                         mime: 'image/svg+xml'
                       })
+                    }
+                    // Lehim pastası (stencil), lehim maskesi ve montaj çizimi
+                    files.push(
+                      { name: `${base}-ust-pasta.svg`, content: svgSolderPaste(project, getFootprint, 'top', { mirror: svgMirror }), mime: 'image/svg+xml' },
+                      { name: `${base}-ust-maske.svg`, content: svgSolderMask(project, getFootprint, 'top', { mirror: svgMirror }), mime: 'image/svg+xml' },
+                      { name: `${base}-ust-montaj.svg`, content: svgAssembly(project, getFootprint, 'top'), mime: 'image/svg+xml' }
+                    )
+                    if (!singleLayer) {
+                      files.push(
+                        { name: `${base}-alt-pasta.svg`, content: svgSolderPaste(project, getFootprint, 'bottom', { mirror: svgMirror }), mime: 'image/svg+xml' },
+                        { name: `${base}-alt-maske.svg`, content: svgSolderMask(project, getFootprint, 'bottom', { mirror: svgMirror }), mime: 'image/svg+xml' },
+                        { name: `${base}-alt-montaj.svg`, content: svgAssembly(project, getFootprint, 'bottom'), mime: 'image/svg+xml' }
+                      )
                     }
                     return files
                   })
@@ -327,6 +381,83 @@ export function ExportDialog() {
               >
                 🖊 {t('Kart dış hattı + yollar (S/B)')} (SVG)
               </button>
+              <button
+                disabled={busy}
+                title={t('Dış çerçeve + yollar + pad\'ler + vialar + delikler + silkscreen yazılar — tek eksiksiz SVG')}
+                onClick={() =>
+                  run(t('Tam kart SVG'), () =>
+                    saveTextFile(
+                      `${base}-tam-kart.svg`,
+                      svgFullBoard(project, getFootprint),
+                      'image/svg+xml'
+                    ).then(() => {})
+                  )
+                }
+              >
+                🗺 {t('Tam Kart — her şey dahil')} (SVG)
+              </button>
+              <button
+                disabled={busy}
+                title={t('Yalnız SMD pad\'ler — lazer/vinil stencil kesimi için')}
+                onClick={() =>
+                  run(t('Lehim pastası (stencil) SVG'), () =>
+                    saveTextFile(
+                      `${base}-ust-pasta.svg`,
+                      svgSolderPaste(project, getFootprint, 'top', { mirror: svgMirror }),
+                      'image/svg+xml'
+                    ).then(() => {})
+                  )
+                }
+              >
+                🩹 {t('Üst lehim pastası — stencil')} (SVG)
+              </button>
+              <button
+                disabled={busy}
+                title={t('Pad açıklıkları (~0.05 mm genişleme) — lehim maskesi')}
+                onClick={() =>
+                  run(t('Lehim maskesi SVG'), () =>
+                    saveTextFile(
+                      `${base}-ust-maske.svg`,
+                      svgSolderMask(project, getFootprint, 'top', { mirror: svgMirror }),
+                      'image/svg+xml'
+                    ).then(() => {})
+                  )
+                }
+              >
+                ⬚ {t('Üst lehim maskesi')} (SVG)
+              </button>
+              <button
+                disabled={busy}
+                title={t('Kart dış hattı + pad konumları + silkscreen (refDes ve pin adları) — elle/makineyle dizgi rehberi')}
+                onClick={() =>
+                  run(t('Montaj çizimi SVG'), () =>
+                    saveTextFile(
+                      `${base}-ust-montaj.svg`,
+                      svgAssembly(project, getFootprint, 'top'),
+                      'image/svg+xml'
+                    ).then(() => {})
+                  )
+                }
+              >
+                🧩 {t('Üst montaj çizimi')} (SVG)
+              </button>
+              {!singleLayer && (
+                <button
+                  disabled={busy}
+                  title={t('Kart dış hattı + pad konumları + silkscreen (refDes ve pin adları) — elle/makineyle dizgi rehberi')}
+                  onClick={() =>
+                    run(t('Alt montaj çizimi SVG'), () =>
+                      saveTextFile(
+                        `${base}-alt-montaj.svg`,
+                        svgAssembly(project, getFootprint, 'bottom'),
+                        'image/svg+xml'
+                      ).then(() => {})
+                    )
+                  }
+                >
+                  🧩 {t('Alt montaj çizimi')} (SVG)
+                </button>
+              )}
               <button
                 disabled={busy}
                 onClick={() =>

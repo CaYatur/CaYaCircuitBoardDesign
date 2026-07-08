@@ -26,8 +26,6 @@ import { componentBBox, padWorldPos, padWorldSize, snapPoint } from '../core/geo
 import { usePrompt } from '../ui/prompts'
 import { useT } from '../i18n'
 
-type BoardTool = 'select' | 'add-rect' | 'add-circle'
-
 type Drag =
   | { kind: 'none' }
   | { kind: 'pan' }
@@ -73,7 +71,8 @@ export function BoardEditor() {
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: 80, y: 80, scale: 6 })
   const [mouseWorld, setMouseWorld] = useState<Point | null>(null)
-  const [tool, setTool] = useState<BoardTool>('select')
+  // Araç sol şeritten (EditorToolStrip) seçilir — konum tüm modlarda sabit
+  const tool = useStore((s) => s.boardTool)
   const [selVertex, setSelVertex] = useState<number | null>(null)
   const [selCutout, setSelCutout] = useState<string | null>(null)
   const [selHole, setSelHole] = useState<number | null>(null)
@@ -638,7 +637,7 @@ export function BoardEditor() {
           setSelCutout(cut.id)
         }
       }
-      setTool('select')
+      useStore.getState().setBoardTool('select')
       setTick((x) => x + 1)
     }
   }, [commit, endTransaction, flushDrag, t])
@@ -699,6 +698,8 @@ export function BoardEditor() {
       if (e.key === 'Shift') shiftHeld.current = true
       if (e.key === ' ') { spaceHeld.current = true; e.preventDefault(); return }
       const s = useStore.getState()
+      // Bir diyalog açıkken editör kısayolları çalışmasın
+      if (s.activeDialog) return
       if (e.ctrlKey || e.metaKey) {
         if (e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? s.redo() : s.undo() }
         else if (e.key.toLowerCase() === 'y') { e.preventDefault(); s.redo() }
@@ -706,7 +707,7 @@ export function BoardEditor() {
       }
       switch (e.key) {
         case 'Escape':
-          setDimEdit(null); setSelVertex(null); setSelCutout(null); setSelHole(null); setTool('select')
+          setDimEdit(null); setSelVertex(null); setSelCutout(null); setSelHole(null); s.setBoardTool('select')
           break
         case 'Delete':
         case 'Backspace':
@@ -792,16 +793,6 @@ export function BoardEditor() {
       />
 
       <div className="board-toolbar">
-        <button className={tool === 'select' ? 'active' : ''} onClick={() => setTool('select')} title={t('Seç / köşe düzenle')}>
-          ⬚ {t('Seç')}
-        </button>
-        <button className={tool === 'add-rect' ? 'active' : ''} onClick={() => setTool('add-rect')} title={t('Dikdörtgen kesim/şekil ekle')}>
-          ▭ {t('Kesim (kare)')}
-        </button>
-        <button className={tool === 'add-circle' ? 'active' : ''} onClick={() => setTool('add-circle')} title={t('Daire kesim/delik ekle')}>
-          ◯ {t('Kesim (daire)')}
-        </button>
-        <span className="board-sep" />
         {selVertex !== null && (
           <label className="board-radius">
             {t('Köşe R')}:

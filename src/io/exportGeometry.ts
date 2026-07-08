@@ -6,6 +6,7 @@ import type { CopperLayer, Footprint, Point, Project } from '../types'
 import { localToWorld, padWorldPos, padWorldSize } from '../core/geometry'
 import { polygonOutlinePoints } from '../core/boardGeometry'
 import { placeText } from '../render/vectorFont'
+import { pinSilkLabels } from '../core/pinSilk'
 
 export interface StrokeItem {
   kind: 'stroke'
@@ -114,6 +115,58 @@ export function copperLayerGeometry(
   return { zones, copper }
 }
 
+export interface PadFlash {
+  shape: 'circle' | 'rect' | 'oval'
+  x: number
+  y: number
+  width: number
+  height: number
+  /** SMD (deliksiz yüzey montaj) mı — lehim pastası yalnız bunlara uygulanır */
+  smd: boolean
+  net: string
+}
+
+/**
+ * Bir yüzeydeki (top/bottom) pad'lerin listesi — lehim maskesi (mask) ve
+ * lehim pastası (paste/stencil) katmanları için. SMD pad'ler etkin yüze göre
+ * süzülür; delikli (THT / 'both') pad'ler her iki yüzde de görünür. Montaj
+ * deliği pad'leri (MH*) atlanır.
+ */
+export function layerPads(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  side: CopperLayer
+): PadFlash[] {
+  const out: PadFlash[] = []
+  for (const comp of project.components) {
+    const fp = getFootprint(comp.footprintId)
+    if (!fp) continue
+    for (const pad of fp.pads) {
+      if (pad.name.startsWith('MH')) continue
+      const isTht = !!pad.drill || pad.layer === 'both'
+      if (!isTht) {
+        const effLayer =
+          comp.side === 'bottom'
+            ? pad.layer === 'top' ? 'bottom' : 'top'
+            : pad.layer
+        if (effLayer !== side) continue
+      }
+      const pos = padWorldPos(comp, pad)
+      const { width, height } = padWorldSize(comp, pad)
+      out.push({
+        shape: pad.shape,
+        x: pos.x,
+        y: pos.y,
+        width,
+        height,
+        smd: !isTht,
+        net: comp.padNets[pad.name] ?? ''
+      })
+    }
+  }
+  return out
+}
+
 /** Silkscreen katmanı: çizgiler (stroke) listesi */
 export function silkLayerGeometry(
   project: Project,
@@ -121,6 +174,7 @@ export function silkLayerGeometry(
   side: CopperLayer
 ): StrokeItem[] {
   const strokes: StrokeItem[] = []
+  const pinSilk = project.settings.pinSilkLabels !== false
 
   const circlePoints = (cx: number, cy: number, r: number): Point[] => {
     const pts: Point[] = []
@@ -135,6 +189,18 @@ export function silkLayerGeometry(
     if (comp.side !== side) continue
     const fp = getFootprint(comp.footprintId)
     if (!fp) continue
+    // Silk pin adları (pad içine yazı) — üretim silk katmanına dahil
+    if (pinSilk) {
+      for (const lbl of pinSilkLabels(fp)) {
+        const anchor = localToWorld(comp, { x: lbl.x, y: lbl.y })
+        const { strokes: textStrokes, strokeWidth } = placeText(
+          lbl.text, anchor, lbl.size, comp.rotation, comp.side === 'bottom', lbl.align
+        )
+        for (const pts of textStrokes) {
+          strokes.push({ kind: 'stroke', points: pts, width: strokeWidth, net: '' })
+        }
+      }
+    }
     for (const el of fp.silk) {
       if (el.kind === 'line') {
         strokes.push({

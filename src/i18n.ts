@@ -705,6 +705,31 @@ const en: Record<string, string> = {
 
   // ── Toplu / şema dışa aktarma ──
   'Tüm Gerber Setini Tek Klasöre Aktar (6 dosya)': 'Export Full Gerber Set to One Folder (6 files)',
+  'Tüm Gerber Setini Tek Klasöre Aktar ({n} dosya)': 'Export Full Gerber Set to One Folder ({n} files)',
+  'PCB üreticilerine (JLCPCB, PCBWay vb.) gönderilecek eksiksiz üretim seti: üst/alt bakır, lehim maskesi, lehim pastası (stencil), silkscreen, kart sınırı ve Excellon delik dosyası.':
+    'Complete manufacturing set for PCB fabs (JLCPCB, PCBWay, etc.): top/bottom copper, solder mask, solder paste (stencil), silkscreen, board outline and Excellon drill file.',
+  'Ayrı dosyalar': 'Individual files',
+  'Üst maske': 'Top mask',
+  'Alt maske': 'Bottom mask',
+  'Üst pasta': 'Top paste',
+  'Alt pasta': 'Bottom paste',
+  'Mekanik': 'Mechanical',
+  'DXF (mekanik)': 'DXF (mechanical)',
+  'DXF — dış hat + delikler': 'DXF — outline + holes',
+  'Kart dış hattı + iç kesimler + delikler — mekanik CAD (Fusion 360, SolidWorks, AutoCAD) ve CNC/lazer için':
+    'Board outline + cutouts + holes — for mechanical CAD (Fusion 360, SolidWorks, AutoCAD) and CNC/laser',
+  'Yalnız SMD pad\'ler — lazer/vinil stencil kesimi için': 'SMD pads only — for laser/vinyl stencil cutting',
+  'Lehim pastası (stencil) SVG': 'Solder paste (stencil) SVG',
+  'Üst lehim pastası — stencil': 'Top solder paste — stencil',
+  'Pad açıklıkları (~0.05 mm genişleme) — lehim maskesi': 'Pad openings (~0.05 mm expansion) — solder mask',
+  'Lehim maskesi SVG': 'Solder mask SVG',
+  'Üst lehim maskesi': 'Top solder mask',
+  'Kart dış hattı + pad konumları + silkscreen (refDes ve pin adları) — elle/makineyle dizgi rehberi':
+    'Board outline + pad positions + silkscreen (refDes and pin names) — manual/machine assembly guide',
+  'Montaj çizimi SVG': 'Assembly drawing SVG',
+  'Üst montaj çizimi': 'Top assembly drawing',
+  'Alt montaj çizimi SVG': 'Bottom assembly drawing SVG',
+  'Alt montaj çizimi': 'Bottom assembly drawing',
   'Tüm SVG\'leri Tek Klasöre Aktar': 'Export All SVGs to One Folder',
   'Tüm G-code Dosyalarını Tek Klasöre Aktar': 'Export All G-code Files to One Folder',
   'Tüm PNG\'leri Tek Klasöre Aktar': 'Export All PNGs to One Folder',
@@ -798,6 +823,10 @@ const en: Record<string, string> = {
     'Changes save automatically and persist on PC/browser. After saving you keep editing this footprint.',
   '"{name}" kütüphaneye kaydedildi (otomatik) — {cat} kategorisi':
     '"{name}" saved to library (automatic) — {cat} category',
+  '"{name}" güncellendi — DİKKAT: {n} komponent yeni pad düzenine uymadığı için karttan kaldırıldı':
+    '"{name}" updated — WARNING: {n} component(s) removed from the board because they no longer match the new pad layout',
+  '"{name}" güncellendi — karttaki {n} eski pad net ataması temizlendi':
+    '"{name}" updated — cleared {n} stale pad net assignment(s) on the board',
   '{n} footprint kullanıcı kütüphanesine aktarıldı (otomatik kayıtlı)':
     '{n} footprints imported to user library (auto-saved)',
   '{n} komponent dışa aktarıldı (.cayalib)': '{n} components exported (.cayalib)',
@@ -877,6 +906,9 @@ const en: Record<string, string> = {
   'İzler': 'Traces',
   'Sürükle: döndür · Tekerlek: yakınlaştır · Sağ tık/Boşluk+sürükle: kaydır':
     'Drag: rotate · Wheel: zoom · Right-click/Space+drag: pan',
+  'Tıkla: seç · Sürükle: döndür · Tekerlek: yakınlaştır · Sağ tık/Boşluk+sürükle: kaydır':
+    'Click: select · Drag: rotate · Wheel: zoom · Right-click/Space+drag: pan',
+  'Seçimi temizle': 'Clear selection',
 
   // ── Yeni: ızgara ──
   'Görünüm': 'View',
@@ -886,8 +918,144 @@ const en: Record<string, string> = {
   'Kapalı (yalnız pad içi)': 'Off (inside pad only)',
   'Uzaklaşınca yanında (varsayılan)': 'Beside when zoomed out (default)',
   'Her zaman yanında': 'Always beside',
+  // ── Silk pin adları / pin gösterim modu ──
+  'Silk pin adları': 'Silk pin names',
+  'Her pad\'in adı/numarası silkscreen katmanında pad\'in içine yazı olarak çizilir ve tüm silk dışa aktarımlarına (Gerber/SVG/PNG) dahil edilir. Yerleşik ve kullanıcı footprint\'lerinin hepsinde otomatiktir. Pinlerin varsayılan gösterimidir. Varsayılan: açık':
+    'Each pad\'s name/number is drawn as text inside the pad on the silkscreen layer and included in all silk exports (Gerber/SVG/PNG). Automatic for all built-in and user footprints. This is the default pin display. Default: on',
+  'Editör pin adları (ekran üstü)': 'Editor pin names (on-screen overlay)',
+  'Yalnız ekranda görünen (dışa aktarılmayan) pad adı kaplaması. Silk pin adlarından ayrıdır; ekstra bir "editör görünümü" olarak istenirse açılır. Varsayılan: kapalı (yalnız pad içi).':
+    'On-screen-only (not exported) pad name overlay. Separate from silk pin names; enable as an extra "editor view" if desired. Default: off (inside pad only).',
+  'Kapalı (yalnız pad içi, varsayılan)': 'Off (inside pad only, default)',
+  'Pad\'e yakınlaşınca adı pad içinde de göster': 'Also show name inside pad when zoomed in',
+  'Silk pin adları açıkken, pad\'e yeterince yakınlaşıldığında ad silk yazısına ek olarak pad\'in içinde de gösterilir. Kapalıysa yalnızca silk yazısı (pad yanı) görünür. Varsayılan: açık':
+    'While silk pin names are on, zooming in close enough also shows the name inside the pad, in addition to the silk text. When off, only the silk text (beside the pad) is shown. Default: on',
+  'Uzaklaşınca yanında': 'Beside when zoomed out',
+  'Pin adı gösterimi: silk (üretim), editör (ekran kaplaması) veya ikisi':
+    'Pin name display: silk (production), editor (screen overlay), or both',
+  'Pin adı gösterimi: silk (pad yanı, üretim), editör (ekran kaplaması) veya kapalı (yalnız yaklaşınca pad içinde)':
+    'Pin name display: silk (beside pad, production), editor (screen overlay), or off (only inside pad when zoomed in)',
+  'Silk (üretim)': 'Silk (production)',
+  'Editör (ekran)': 'Editor (screen)',
+  'İkisi': 'Both',
+  'Özel footprint etiket konumuna öncelik ver': 'Prioritize custom footprint label position',
+  'Kullanıcı tanımlı footprint\'lerde footprint editöründe elle taşınmış pad adı varsa PCB\'de de aynı konumda gösterilir. Kapalıysa PCB her zaman otomatik/simetrik yerleşimi kullanır. Yerleşik footprint\'leri etkilemez. Varsayılan: açık':
+    'For user-defined footprints, if a pad name was manually moved in the footprint editor, it is shown at that same position on the PCB. When off, the PCB always uses automatic/symmetric placement. Does not affect built-in footprints. Default: on',
+  'Sığmayınca pin adlarını otomatik gizle': 'Auto-hide pin names when crowded',
+  'Kart dışında gösterilen pin adları çakışacak veya kart dışına taşacak kadar sıkışırsa, o bileşenin tüm pin adları (özel konumlananlar dahil) birlikte gizlenir. Kapalıysa yer olmasa da her zaman gösterilir. Varsayılan: açık':
+    'If pin name labels shown outside the board would overlap or overflow the board edge, all of that component\'s pin names (including custom-positioned ones) are hidden together. When off, they are always shown regardless of space. Default: on',
   'Izgara görünümü': 'Grid style',
   'Çizgi': 'Lines',
   'Nokta': 'Dots',
-  'Kapalı': 'Off'
+  'Kapalı': 'Off',
+
+  // ── Yeni: sol araç şeridi ──
+  'İzo': 'Iso',
+  'Bileşen': 'Parts',
+  'Model': 'Models',
+  'Pin Adı': 'Pin Names',
+  'Model Al': 'Import',
+  'Bileşenleri göster/gizle': 'Show/hide components',
+  'İzleri göster/gizle': 'Show/hide traces',
+  'İçe aktarılan 3B modelleri göster/gizle': 'Show/hide imported 3D models',
+  'Pin adlarını kart üstünde göster': 'Show pin names on the board',
+  'Görünümü PNG olarak dışa aktar': 'Export view as PNG',
+  'Sahneyi OBJ modeli olarak dışa aktar': 'Export scene as OBJ model',
+
+  // ── Yeni: araç ipuçları (şema/kart) ──
+  'Tel çizimi — pin ucuna tıklayıp başlayın, çift tık/Enter: bitir':
+    'Wire drawing — click a pin end to start, double-click/Enter to finish',
+  'Net atama — pin ucuna veya tele tıklayın': 'Assign net — click a pin end or a wire',
+  'Silme — tel veya sembole tıklayın': 'Delete — click a wire or symbol',
+  'Seçim — sembol/tel tıkla, sürükle, R: döndür, Del: sil':
+    'Select — click/drag symbols & wires, R: rotate, Del: delete',
+  'Dikdörtgen kesim/şekil — kart üstüne sürükleyin': 'Rectangular cutout — drag on the board',
+  'Daire kesim — kart üstüne sürükleyin': 'Circular cutout — drag on the board',
+  'Seç / köşe düzenle — köşe ve ölçüleri sürükleyin': 'Select / edit corners — drag vertices and dimensions',
+  'Not: bu pin şemada bir tele bağlı — tel durdukça senkron neti yeniden atayabilir':
+    'Note: this pin is connected to a schematic wire — sync may re-assign the net while the wire remains',
+
+  // ── Yeni: 3B görünüm ──
+  'Renkler': 'Colors',
+  'Bileşen renkleri': 'Component colors',
+  'Bileşen renklerini ayrı ayrı değiştir': 'Change component colors individually',
+  'Varsayılan renge dön': 'Reset to default color',
+  'Renk, footprint 3B modelinin/otomatik gövdenin rengini geçersiz kılar. PNG/OBJ dışa aktarımına yansır.':
+    'The color overrides the footprint 3D model / auto body color. It is reflected in PNG/OBJ exports.',
+  '3B görünüm PNG olarak dışa aktarıldı': '3D view exported as PNG',
+  '3B sahne OBJ + MTL olarak dışa aktarıldı': '3D scene exported as OBJ + MTL',
+  'Dışa aktarılamadı: {err}': 'Export failed: {err}',
+
+  // ── Yeni: footprint editörü sekmeleri ──
+  'Kılıf (PCB)': 'Land pattern (PCB)',
+  'Şema Sembolü': 'Schematic Symbol',
+  '3B Model': '3D Model',
+  'Pad, etiket, silk ve köşeleri taşı — boşlukta sürükle: kaydır':
+    'Move pads, labels, silk and vertices — drag empty space to pan',
+  'Tıklayarak pad ekle': 'Click to add a pad',
+  'Silkscreen çizgi çiz (sürükle)': 'Draw silkscreen line (drag)',
+  'Silkscreen daire çiz (merkezden sürükle)': 'Draw silkscreen circle (drag from center)',
+  'Silkscreen yazı ekle': 'Add silkscreen text',
+  'Pad / silk öğesi / köşe sil': 'Delete pad / silk element / vertex',
+  'Pad': 'Pad',
+  'Dış hat': 'Outline',
+  'Çerçeve': 'Frame',
+  'Gövde ölçülerinden dikdörtgen çerçeve çiz': 'Draw rectangular frame from body dimensions',
+  'Sığdır': 'Fit',
+  'İçeriğe sığdır': 'Fit to content',
+  'Örn: 1, A, +': 'e.g. 1, A, +',
+  'Tekerlek: yakınlaştır · Sağ tık/boş alan sürükle: kaydır · Shift: ızgarasız hassas':
+    'Wheel: zoom · Right-click/empty-area drag: pan · Shift: fine (no grid)',
+  'Özelleştir': 'Customize',
+  'Otomatik': 'Auto',
+  'Pin ve çizimleri taşı · pine çift tık: yön değiştir':
+    'Move pins and drawings · double-click pin: flip side',
+  'Çizgi çiz (sürükle)': 'Draw line (drag)',
+  'Dikdörtgen çiz (sürükle)': 'Draw rectangle (drag)',
+  'Daire çiz (merkezden sürükle)': 'Draw circle (drag from center)',
+  'Yazı ekle': 'Add text',
+  'Çizim öğesi sil': 'Delete drawing element',
+  'Otomatik sembole (kutu/standart glif) geri dön': 'Return to automatic symbol (box/standard glyph)',
+  'Kutu': 'Box',
+  'Sembol yazısı': 'Symbol text',
+  'Örn: OPAMP, +, K': 'e.g. OPAMP, +, K',
+  'Sarı noktalar pin uçlarıdır (tel buraya bağlanır) — sürükleyin, çift tıkla yön değiştirin. Pinler pad adlarıyla eşleşir.':
+    'Yellow dots are pin ends (wires attach here) — drag them, double-click to flip side. Pins match pad names.',
+  'Bu footprint şemada otomatik sembolle gösterilir. Özelleştir ile kendi çiziminizi yapın; kaydedince şemada kullanılır.':
+    'This footprint uses an automatic schematic symbol. Use Customize to draw your own; it is used in the schematic once saved.',
+  'Otomatik sembol — düzenlemek için "Özelleştir"e basın': 'Automatic symbol — press "Customize" to edit',
+  'Basit şekil': 'Simple shape',
+  'OBJ/STL model': 'OBJ/STL model',
+  'Silindir': 'Cylinder',
+  'Model seç': 'Choose model',
+  'Dönüş': 'Rotation',
+  '3B görünümde kategoriye göre otomatik basit gövde üretilir. Basit şekil veya OBJ/STL model atayabilirsiniz.':
+    'The 3D view generates an automatic simple body by category. You can assign a simple shape or an OBJ/STL model.',
+  'Sürükle: döndür · Tekerlek: yakınlaştır. Model kaydedilen footprint ile birlikte saklanır ve 3B görünümde kullanılır.':
+    'Drag: rotate · Wheel: zoom. The model is stored with the footprint and used in the 3D view.',
+
+  // ── Yeni: kaydedilmemiş değişiklik uyarıları ──
+  'Kaydedilmemiş değişiklikler var': 'You have unsaved changes',
+  'Devam ederseniz mevcut projedeki kaydedilmemiş değişiklikler kaybolur. Önce Kaydet\'e basabilirsiniz.':
+    'If you continue, unsaved changes in the current project will be lost. You can press Save first.',
+  'Mevcut projedeki ("{name}") kaydedilmemiş değişiklikler devam ederseniz KAYBOLUR. Kaydetmek için önce "Editöre geç" ile dönüp Kaydet\'e basın.':
+    'Unsaved changes in the current project ("{name}") will be LOST if you continue. To save, go back with "Go to editor" and press Save first.',
+  'Devam (kaydetme)': 'Continue (discard)',
+
+  // ── Yeni: footprint editörü seçim/özellik ──
+  'Kalınlık': 'Width',
+  'Boyut': 'Size',
+  'Sol': 'Left',
+  'Sağ': 'Right',
+  'Dolu': 'Filled',
+  'Çokgen': 'Polygon',
+  'Tekerlek: yakınlaştır · Sağ tık/boş alan sürükle: kaydır · Shift: ızgarasız hassas · Del: seçiliyi sil · Ctrl+Z: geri al':
+    'Wheel: zoom · Right-click/empty-area drag: pan · Shift: fine (no grid) · Del: delete selection · Ctrl+Z: undo',
+  'Sarı noktalar pin uçlarıdır (tel buraya bağlanır) — sürükleyin, çift tıkla yön değiştirin. Pinler pad adlarıyla eşleşir. Del: seçili çizimi sil':
+    'Yellow dots are pin ends (wires attach here) — drag them, double-click to flip side. Pins match pad names. Del: delete selected drawing',
+
+  // ── Yeni: tam kart SVG ──
+  'Tam Kart — her şey dahil': 'Full Board — everything included',
+  'Tam kart SVG': 'Full board SVG',
+  'Dış çerçeve + yollar + pad\'ler + vialar + delikler + silkscreen yazılar — tek eksiksiz SVG':
+    'Outline + traces + pads + vias + drills + silkscreen texts — one complete SVG'
 }

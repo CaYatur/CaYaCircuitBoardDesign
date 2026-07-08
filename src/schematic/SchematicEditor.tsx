@@ -12,17 +12,18 @@ import {
   ensureSymbols,
   junctionPoints,
   orthoCorner,
+  removeOrphanWires,
   snapSch,
   symbolBBox,
   symbolLayout,
   symbolToWorld,
-  syncSchematicNetsAndPcb
+  syncSchematicNetsAndPcb,
+  wiresInGroup
 } from './model'
 import { schematicGlyph, type GlyphPrim } from './symbols'
 import { usePrompt } from '../ui/prompts'
+import { NetPopover, suggestNetName } from '../ui/NetPopover'
 import { useT } from '../i18n'
-
-type SchTool = 'select' | 'wire' | 'net' | 'delete'
 
 interface View {
   x: number
@@ -48,8 +49,13 @@ export function SchematicEditor() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: 40, y: 40, scale: 4 })
-  const [tool, setTool] = useState<SchTool>('select')
+  const tool = useStore((s) => s.schTool)
+  const setTool = useStore((s) => s.setSchTool)
   const [mouseWorld, setMouseWorld] = useState<Point | null>(null)
+  // Pin ucuna net atama popover'ı (net aracı)
+  const [pinNetPopover, setPinNetPopover] = useState<
+    { compId: string; padName: string; x: number; y: number } | null
+  >(null)
   const [drawingWire, setDrawingWire] = useState<Point[] | null>(null)
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
   const [selectedWire, setSelectedWire] = useState<string | null>(null)
@@ -163,6 +169,30 @@ export function SchematicEditor() {
     [store, view.scale]
   )
 
+  /** Bir sembol pin ucuna yakın mı? (net atama / bilgi için) */
+  const hitPin = useCallback(
+    (p: Point): { compId: string; padName: string; pos: Point } | null => {
+      const s = store.getState()
+      const tol = 8 / view.scale
+      let best: { compId: string; padName: string; pos: Point; d: number } | null = null
+      for (const sym of s.project.schematic.symbols) {
+        const comp = s.project.components.find((c) => c.id === sym.componentId)
+        if (!comp) continue
+        const fp = s.getFootprint(comp.footprintId)
+        if (!fp) continue
+        for (const pin of symbolLayout(fp).pins) {
+          const wp = symbolToWorld(sym, pin.end)
+          const d = Math.hypot(wp.x - p.x, wp.y - p.y)
+          if (d < tol && (!best || d < best.d)) {
+            best = { compId: comp.id, padName: pin.name, pos: wp, d }
+          }
+        }
+      }
+      return best
+    },
+    [store, view.scale]
+  )
+
   /** Bir telin köşe noktalarından birine yakın mı? (dizin döner, yoksa -1) */
   const hitWireVertex = useCallback(
     (wireId: string, p: Point): number => {
@@ -173,6 +203,29 @@ export function SchematicEditor() {
       return wire.points.findIndex((pt) => Math.hypot(pt.x - p.x, pt.y - p.y) <= tol)
     },
     [store, view.scale]
+  )
+
+  /**
+   * Komponenti şema + PCB'den siler; ona bağlı yetim telleri kaldırır ve
+   * netleri yeniden senkronlar (şemada asılı tel/etiket kalmaz).
+   */
+  const deleteComponent = useCallback(
+    (compId: string) => {
+      const s = store.getState()
+      const sym = s.project.schematic.symbols.find((x) => x.componentId === compId)
+      const comp = s.project.components.find((c) => c.id === compId)
+      const fp = comp && s.getFootprint(comp.footprintId)
+      const pinPositions: Point[] =
+        sym && fp ? symbolLayout(fp).pins.map((pin) => symbolToWorld(sym, pin.end)) : []
+      s.commit((p) => {
+        p.components = p.components.filter((c) => c.id !== compId)
+        p.schematic.symbols = p.schematic.symbols.filter((x) => x.componentId !== compId)
+        removeOrphanWires(p, s.getFootprint, pinPositions)
+        syncSchematicNetsAndPcb(p, s.getFootprint)
+      }, t('Komponent silindi (şema + PCB)'))
+      setSelectedSymbol(null)
+    },
+    [store, t]
   )
 
   // ── Render ──
@@ -209,6 +262,77 @@ export function SchematicEditor() {
 
     const px = (n: number) => n / view.scale // ekran pikselini dünya birimine çevir
 
+    // ── Çakışmasız etiket yerleştirme ──
+    // Tüm metin etiketleri (tel adları, pin adları, net adları) dünya uzayında
+    // dikdörtgen olarak kaydedilir; yeni etiket mevcutlara binerse yukarı/aşağı
+    // kaydırılır. Kısa tellerde pin adı + net adı üst üste binmesini önler.
+    const placedLabels: { x: number; y: number; w: number; h: number }[] = []
+    const labelOverlaps = (r: { x: number; y: number; w: number; h: number }) =>
+      placedLabels.some(
+        (d) =>
+          Math.abs(d.x - r.x) * 2 < d.w + r.w + px(3) &&
+          Math.abs(d.y - r.y) * 2 < d.h + r.h + px(2)
+      )
+    /**
+     * Etiketi çakışmadan çizer. mode:
+     *  'nudge' (vars.) → çakışırsa dikeyde ±adımlarla boş yer arar
+     *  'skip'          → çakışıyorsa hiç çizmez (pin adları yerinden oynamamalı)
+     * (cx,cy) metnin merkez noktasıdır; align'a göre çizilir.
+     */
+    const drawLabel = (
+      text: string,
+      cx: number,
+      cy: number,
+      opts: {
+        color: string
+        fontPx?: number
+        bold?: boolean
+        align?: CanvasTextAlign
+        mode?: 'nudge' | 'skip'
+      }
+    ) => {
+      const fontPx = opts.fontPx ?? 11
+      ctx.font = `${opts.bold ? 'bold ' : ''}${px(fontPx)}px system-ui, sans-serif`
+      const w = ctx.measureText(text).width
+      const h = px(fontPx)
+      // align'a göre merkez düzelt
+      const align = opts.align ?? 'center'
+      const centerX = align === 'left' ? cx + w / 2 : align === 'right' ? cx - w / 2 : cx
+      let rect = { x: centerX, y: cy, w, h }
+      if (labelOverlaps(rect)) {
+        if (opts.mode === 'skip') return null
+        // yukarı, sonra aşağı doğru boş yer ara
+        let found = false
+        for (const dir of [-1, 1, -2, 2, -3, 3]) {
+          const cand = { ...rect, y: cy + dir * h * 1.15 }
+          if (!labelOverlaps(cand)) { rect = cand; found = true; break }
+        }
+        if (!found) return null // hiç yer yoksa üst üste yazma
+      }
+      ctx.fillStyle = opts.color
+      ctx.textAlign = align
+      ctx.textBaseline = 'middle'
+      ctx.fillText(text, cx, rect.y)
+      ctx.textBaseline = 'alphabetic'
+      placedLabels.push(rect)
+      return rect
+    }
+    /** Bir pinin ucuna değen tel var mı? (o telin etiketi neti zaten gösterir) */
+    const wireNetAtPin = (pos: Point): string | null => {
+      for (const w of project.schematic.wires) {
+        const touches =
+          w.points.some((q) => Math.hypot(q.x - pos.x, q.y - pos.y) <= 0.01) ||
+          (() => {
+            for (let i = 0; i < w.points.length - 1; i++) {
+              if (segPointDist(w.points[i], w.points[i + 1], pos) <= 0.01) return true
+            }
+            return false
+          })()
+        if (touches) return w.net || '' // '' = adsız tel (etiket göstermiyor)
+      }
+      return null
+    }
+
     // Teller
     for (const w of project.schematic.wires) {
       ctx.strokeStyle = C.wire
@@ -220,12 +344,22 @@ export function SchematicEditor() {
       for (const p of w.points.slice(1)) ctx.lineTo(p.x, p.y)
       ctx.stroke()
       if (w.net) {
-        const mid = w.points[Math.floor(w.points.length / 2) - 1]
-        const mid2 = w.points[Math.floor(w.points.length / 2)]
-        ctx.fillStyle = C.netLabel
-        ctx.font = `${px(12)}px system-ui, sans-serif`
-        ctx.textAlign = 'center'
-        ctx.fillText(w.net, (mid.x + mid2.x) / 2, (mid.y + mid2.y) / 2 - px(5))
+        // En uzun segmentin ortasına yerleştir (kısa uç parçalara sıkışmasın)
+        let bi = 0
+        let bl = -1
+        for (let i = 0; i < w.points.length - 1; i++) {
+          const l = Math.hypot(
+            w.points[i + 1].x - w.points[i].x,
+            w.points[i + 1].y - w.points[i].y
+          )
+          if (l > bl) { bl = l; bi = i }
+        }
+        const mid = w.points[bi]
+        const mid2 = w.points[bi + 1]
+        drawLabel(w.net, (mid.x + mid2.x) / 2, (mid.y + mid2.y) / 2 - px(8), {
+          color: C.netLabel,
+          fontPx: 12
+        })
       }
     }
 
@@ -265,7 +399,9 @@ export function SchematicEditor() {
       for (const pr of prims) {
         ctx.strokeStyle = stroke
         ctx.fillStyle = stroke
-        ctx.lineWidth = px(pr.k === 'plusminus' ? 1.6 : (pr.w ?? 1.7))
+        ctx.lineWidth = px(
+          pr.k === 'plusminus' || pr.k === 'text' ? 1.6 : (pr.w ?? 1.7)
+        )
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
         if (pr.k === 'line') {
@@ -298,6 +434,12 @@ export function SchematicEditor() {
             ctx.lineTo(pr.x, pr.y + pr.s)
           }
           ctx.stroke()
+        } else if (pr.k === 'text') {
+          ctx.font = `${pr.size ?? 2.2}px system-ui, sans-serif`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(pr.text, pr.x, pr.y)
+          ctx.textBaseline = 'alphabetic'
         }
       }
     }
@@ -317,8 +459,8 @@ export function SchematicEditor() {
       ctx.translate(sym.x, sym.y)
       ctx.rotate((sym.rotation * Math.PI) / 180)
 
-      if (glyph.kind === 'passive') {
-        // Pin uçları (uç → iç), terminal noktası/pin adı olmadan
+      if (glyph.kind === 'passive' || glyph.kind === 'custom') {
+        // Pin uçları (uç → iç), terminal noktası olmadan
         for (const pin of layout.pins) {
           ctx.strokeStyle = bodyColor
           ctx.lineWidth = px(1.7)
@@ -327,13 +469,6 @@ export function SchematicEditor() {
           ctx.moveTo(pin.end.x, pin.end.y)
           ctx.lineTo(pin.inner.x, pin.inner.y)
           ctx.stroke()
-          const net = comp.padNets[pin.name]
-          if (net) {
-            ctx.fillStyle = C.netLabel
-            ctx.font = `${px(11)}px system-ui, sans-serif`
-            ctx.textAlign = pin.side === 'left' ? 'right' : 'left'
-            ctx.fillText(net, pin.side === 'left' ? pin.end.x - px(4) : pin.end.x + px(4), pin.end.y - px(4))
-          }
         }
         // Gövde glifi
         drawPrims(glyph.prims, bodyColor)
@@ -343,8 +478,7 @@ export function SchematicEditor() {
         ctx.lineWidth = px(selected ? 2.5 : 1.5)
         ctx.strokeRect(layout.box.x, layout.box.y, layout.box.width, layout.box.height)
 
-        // Pinler
-        ctx.font = `${px(11)}px system-ui, sans-serif`
+        // Pin bacakları + uç noktaları
         for (const pin of layout.pins) {
           ctx.strokeStyle = C.pin
           ctx.lineWidth = px(1.5)
@@ -356,40 +490,68 @@ export function SchematicEditor() {
           ctx.arc(pin.end.x, pin.end.y, px(2), 0, Math.PI * 2)
           ctx.fillStyle = C.pin
           ctx.fill()
-          // Pin adı + atanmış net
-          const net = comp.padNets[pin.name]
-          ctx.fillStyle = C.pinName
-          ctx.textAlign = pin.side === 'left' ? 'left' : 'right'
-          ctx.fillText(
-            pin.name,
-            pin.side === 'left' ? pin.inner.x + px(4) : pin.inner.x - px(4),
-            pin.inner.y + px(4)
-          )
-          if (net) {
-            ctx.fillStyle = C.netLabel
-            ctx.textAlign = pin.side === 'left' ? 'right' : 'left'
-            ctx.fillText(
-              net,
-              pin.side === 'left' ? pin.end.x - px(4) : pin.end.x + px(4),
-              pin.end.y - px(4)
-            )
-          }
+        }
+      }
+      ctx.restore()
+
+      // ── Etiketler: dünya uzayında (döndürülmüş sembolde de yatay okunur),
+      // çakışmasız yerleştirme ile ──
+      // Pin adları yalnız SIĞIYORSA çizilir: satır yüksekliği (pin aralığı)
+      // ekranda yazı boyundan küçükse adlar üst üste bineceğinden tümü gizlenir
+      // (bozuk görünüm yerine temiz sembol).
+      const rowPx = view.scale * SCH_GRID
+      const namesFit = rowPx >= 10.5
+      const nameFontPx = Math.min(11, Math.max(7, rowPx * 0.72))
+      const drawPinNames = glyph.kind !== 'passive' && namesFit
+      for (const pin of layout.pins) {
+        const endW = symbolToWorld(sym, pin.end)
+        const innerW = symbolToWorld(sym, pin.inner)
+        // içe (kutuya) doğru birim yön
+        let ix = innerW.x - endW.x
+        let iy = innerW.y - endW.y
+        const il = Math.hypot(ix, iy) || 1
+        ix /= il
+        iy /= il
+        if (drawPinNames) {
+          const horizontal = Math.abs(ix) >= Math.abs(iy)
+          drawLabel(pin.name, innerW.x + ix * px(4), innerW.y + iy * px(4) + (horizontal ? px(1) : 0), {
+            color: C.pinName,
+            fontPx: nameFontPx,
+            align: horizontal ? (ix > 0 ? 'left' : 'right') : 'center',
+            mode: 'skip' // pin adı yerinden oynatılamaz; sığmazsa çizilmez
+          })
+        }
+        const net = comp.padNets[pin.name]
+        if (net && namesFit) {
+          // Pinin bağlı olduğu tel aynı adı zaten gösteriyorsa tekrar yazma
+          // (kısa tellerde üst üste binmenin ana nedeni)
+          const wn = wireNetAtPin(endW)
+          if (wn === net) continue
+          const horizontal = Math.abs(ix) >= Math.abs(iy)
+          drawLabel(net, endW.x - ix * px(6), endW.y - iy * px(6) - (horizontal ? px(9) : 0), {
+            color: C.netLabel,
+            fontPx: nameFontPx,
+            align: horizontal ? (ix > 0 ? 'right' : 'left') : 'center',
+            mode: 'skip'
+          })
         }
       }
 
-      // RefDes + değer
-      ctx.fillStyle = C.refDes
-      ctx.font = `bold ${px(13)}px system-ui, sans-serif`
-      ctx.textAlign = 'left'
-      ctx.fillText(comp.refDes, layout.box.x, layout.box.y - px(6))
-      ctx.fillStyle = C.pinName
-      ctx.font = `${px(10)}px system-ui, sans-serif`
-      ctx.fillText(
-        comp.value,
-        layout.box.x,
-        layout.box.y + layout.box.height + px(14)
-      )
-      ctx.restore()
+      // RefDes + değer (sembol sınır kutusunun üstünde/altında, yatay)
+      const bb = symbolBBox(sym, layout)
+      drawLabel(comp.refDes, bb.x, bb.y - px(8), {
+        color: C.refDes,
+        fontPx: 13,
+        bold: true,
+        align: 'left'
+      })
+      if (comp.value) {
+        drawLabel(comp.value, bb.x, bb.y + bb.height + px(10), {
+          color: C.pinName,
+          fontPx: 10,
+          align: 'left'
+        })
+      }
     }
 
     // Çizilmekte olan tel
@@ -542,14 +704,29 @@ export function SchematicEditor() {
           break
         }
         case 'net': {
+          // Önce pin ucu: pinin noktasına tıklayarak doğrudan net atama
+          const pin = hitPin(raw)
+          if (pin) {
+            setPinNetPopover({
+              compId: pin.compId,
+              padName: pin.padName,
+              x: e.clientX,
+              y: e.clientY
+            })
+            break
+          }
           const wireId = hitWire(raw)
           if (wireId) {
             const wire = s.project.schematic.wires.find((w) => w.id === wireId)!
             const name = await ask(t('Net adı'), wire.net || '', 'GND, VCC, SIG1...')
             if (name !== null) {
+              // Ad, birbirine değen tüm tel grubuna uygulanır — tek telin adı
+              // değişip grubun geri kalanının eski adla kalması önlenir
+              const groupIds = wiresInGroup(s.project, wireId)
               s.commit((p) => {
-                const w = p.schematic.wires.find((x) => x.id === wireId)
-                if (w) w.net = name.trim()
+                for (const w of p.schematic.wires) {
+                  if (groupIds.includes(w.id)) w.net = name.trim()
+                }
                 syncSchematicNetsAndPcb(p, s.getFootprint)
               }, t('Net adı atandı: {name}', { name: name.trim() || 'N$' }))
             }
@@ -563,19 +740,12 @@ export function SchematicEditor() {
             break
           }
           const compId = hitSymbol(raw)
-          if (compId) {
-            s.commit((p) => {
-              p.components = p.components.filter((c) => c.id !== compId)
-              p.schematic.symbols = p.schematic.symbols.filter(
-                (x) => x.componentId !== compId
-              )
-            }, t('Komponent silindi (şema + PCB)'))
-          }
+          if (compId) deleteComponent(compId)
           break
         }
       }
     },
-    [tool, toWorld, hitSymbol, hitWire, hitWireVertex, selectedWire, snapPoint, drawingWire, store, ask, t]
+    [tool, toWorld, hitSymbol, hitWire, hitWireVertex, hitPin, deleteComponent, selectedWire, snapPoint, drawingWire, store, ask, t]
   )
 
   const isPinEnd = useCallback(
@@ -738,6 +908,8 @@ export function SchematicEditor() {
       const target = e.target as HTMLElement
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       const s = store.getState()
+      // Bir diyalog açıkken editör kısayolları çalışmasın
+      if (s.activeDialog) return
       if (e.ctrlKey || e.metaKey) {
         if (e.key.toLowerCase() === 'z') {
           e.preventDefault()
@@ -809,13 +981,16 @@ export function SchematicEditor() {
           } else if (selectedWire) {
             s.deleteSchematicWire(selectedWire)
             setSelectedWire(null)
+          } else if (selectedSymbol) {
+            // Seçili sembolü Del ile sil (şema + PCB + yetim teller)
+            deleteComponent(selectedSymbol)
           }
           break
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [store, drawingWire, selectedSymbol, selectedWire, selectedWireVertex, commitWire, t])
+  }, [store, drawingWire, selectedSymbol, selectedWire, selectedWireVertex, commitWire, deleteComponent, setTool, t])
 
   const splitWireAt = useCallback(
     (wireId: string, index: number) => {
@@ -851,22 +1026,43 @@ export function SchematicEditor() {
         onContextMenu={(e) => e.preventDefault()}
       />
       <div className="sch-toolbar">
-        <button className={tool === 'select' ? 'active' : ''} onClick={() => setTool('select')} title={t('Seç / Taşı') + ' (S)'}>
-          ⬚ {t('Seç')}
-        </button>
-        <button className={tool === 'wire' ? 'active' : ''} onClick={() => setTool('wire')} title={t('Tel Çiz') + ' (W)'}>
-          ⌐ {t('Tel')}
-        </button>
-        <button className={tool === 'net' ? 'active' : ''} onClick={() => setTool('net')} title={t('Tele net adı ver') + ' (N)'}>
-          ⚡ {t('Net Adı')}
-        </button>
-        <button className={tool === 'delete' ? 'active' : ''} onClick={() => setTool('delete')} title={t('Sil')}>
-          ✕ {t('Sil')}
-        </button>
         <span className="sch-hint">
           {t('Çift tık: sembolde pin editörü, telde bitir · Tekil nokta: tıkla+Del veya sağ tık · Shift: hassas')}
         </span>
       </div>
+      {pinNetPopover && (() => {
+        const comp = project.components.find((c) => c.id === pinNetPopover.compId)
+        if (!comp) return null
+        return (
+          <NetPopover
+            x={pinNetPopover.x}
+            y={pinNetPopover.y}
+            refDes={comp.refDes}
+            padName={pinNetPopover.padName}
+            current={comp.padNets[pinNetPopover.padName] ?? ''}
+            suggest={suggestNetName(pinNetPopover.padName)}
+            onApply={(net) => {
+              const s = store.getState()
+              const nm = net.trim()
+              s.commit((p) => {
+                const c2 = p.components.find((c) => c.id === pinNetPopover.compId)
+                if (c2) {
+                  if (nm) c2.padNets[pinNetPopover.padName] = nm
+                  else delete c2.padNets[pinNetPopover.padName]
+                  // Elle atama — şema provenans kaydından düş
+                  if (p.schematic.pinNets) {
+                    delete p.schematic.pinNets[`${pinNetPopover.compId}::${pinNetPopover.padName}`]
+                  }
+                }
+                // Pin bir tele bağlıysa grup adları hemen güncellensin
+                syncSchematicNetsAndPcb(p, s.getFootprint)
+              }, nm ? t('Net atandı: {net}', { net: nm }) : t('Net kaldırıldı'))
+              setPinNetPopover(null)
+            }}
+            onClose={() => setPinNetPopover(null)}
+          />
+        )
+      })()}
       {wireMenu && (
         <>
           <div

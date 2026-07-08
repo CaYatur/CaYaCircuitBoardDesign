@@ -7,19 +7,16 @@
 // Çok pinli bileşenler (IC, konnektör, modül, transistör) kutu olarak kalır —
 // bu zaten standart şema gösterimidir.
 
-import type { Footprint, Point } from '../types'
+import type { Footprint, Point, SymbolPrim } from '../types'
 import { SCH_GRID, type SymbolLayout } from './model'
 
-export type GlyphPrim =
-  | { k: 'line'; x1: number; y1: number; x2: number; y2: number; w?: number }
-  | { k: 'poly'; pts: Point[]; close?: boolean; fill?: boolean; w?: number }
-  | { k: 'circle'; cx: number; cy: number; r: number; fill?: boolean; w?: number }
-  | { k: 'arc'; cx: number; cy: number; r: number; a0: number; a1: number; w?: number }
-  | { k: 'plusminus'; x: number; y: number; s: number; minus?: boolean }
+/** Çizim ilkeli — özel sembollerle (types.SymbolPrim) aynı biçim */
+export type GlyphPrim = SymbolPrim
 
 export type SymbolGlyph =
   | { kind: 'box' }
   | { kind: 'passive'; prims: GlyphPrim[] }
+  | { kind: 'custom'; prims: GlyphPrim[] }
 
 type PassiveKind =
   | 'resistor'
@@ -62,6 +59,10 @@ function passiveKind(fp: Footprint): PassiveKind | null {
  * Yalnız 2 uçlu pasifler için 'passive' döner; ötekiler 'box'.
  */
 export function schematicGlyph(fp: Footprint, layout: SymbolLayout): SymbolGlyph {
+  // Kullanıcının footprint editöründe çizdiği özel sembol her şeyi geçersiz kılar
+  if (fp.symbol && fp.symbol.pins.length > 0) {
+    return { kind: 'custom', prims: fp.symbol.prims }
+  }
   const kind = passiveKind(fp)
   if (!kind) return { kind: 'box' }
 

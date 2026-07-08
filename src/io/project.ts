@@ -76,7 +76,11 @@ export function validateProject(raw: any): Project {
     customFootprints: Array.isArray(raw.customFootprints) ? raw.customFootprints : [],
     schematic: {
       symbols: Array.isArray(raw.schematic?.symbols) ? raw.schematic.symbols : [],
-      wires: Array.isArray(raw.schematic?.wires) ? raw.schematic.wires : []
+      wires: Array.isArray(raw.schematic?.wires) ? raw.schematic.wires : [],
+      // Şema senkron provenansı (tel kaynaklı pin atamaları) — varsa koru
+      ...(raw.schematic?.pinNets && typeof raw.schematic.pinNets === 'object'
+        ? { pinNets: raw.schematic.pinNets }
+        : {})
     }
   }
   // Eski projelerde katman sayısı yoksa çift katman varsay
@@ -113,7 +117,19 @@ export function validateProject(raw: any): Project {
     project.settings.removePcbTracesOnSchematicChange = true
   }
   if (!['off', 'zoomed-out', 'always'].includes(project.settings.padLabelMode)) {
-    project.settings.padLabelMode = 'zoomed-out'
+    project.settings.padLabelMode = 'off'
+  }
+  if (typeof project.settings.pinSilkLabels !== 'boolean') {
+    project.settings.pinSilkLabels = true
+  }
+  if (typeof project.settings.pinSilkShowOnPad !== 'boolean') {
+    project.settings.pinSilkShowOnPad = true
+  }
+  if (typeof project.settings.padLabelRespectCustomFootprintPos !== 'boolean') {
+    project.settings.padLabelRespectCustomFootprintPos = true
+  }
+  if (typeof project.settings.padLabelAutoHideCrowded !== 'boolean') {
+    project.settings.padLabelAutoHideCrowded = true
   }
   delete (project.settings as any).clearNetsOnPathDelete
   // Komponentlerin padNets alanı olduğundan emin ol
@@ -190,6 +206,13 @@ export function validateFootprint(raw: any): Footprint {
     silk: Array.isArray(raw.silk) ? raw.silk : [],
     ...(Array.isArray(raw.outline)
       ? { outline: raw.outline.map((p: any) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 })) }
+      : {}),
+    // Özel şema sembolü ve 3B model — varsa aynen taşı
+    ...(raw.symbol && Array.isArray(raw.symbol.pins) && Array.isArray(raw.symbol.prims)
+      ? { symbol: raw.symbol }
+      : {}),
+    ...(raw.model3d && (raw.model3d.kind === 'param' || raw.model3d.kind === 'mesh')
+      ? { model3d: raw.model3d }
       : {}),
     body: {
       x: Number(raw.body?.x) || -5,

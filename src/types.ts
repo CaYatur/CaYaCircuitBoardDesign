@@ -61,6 +61,67 @@ export interface SilkText {
 
 export type SilkElement = SilkLine | SilkCircle | SilkText
 
+// ─── Özel şema sembolü (footprint başına) ─────────────────────────────────
+
+/** Şema sembolü çizim ilkeli (sembol yerel koordinatları, şema mm birimi) */
+export type SymbolPrim =
+  | { k: 'line'; x1: number; y1: number; x2: number; y2: number; w?: number }
+  | { k: 'poly'; pts: Point[]; close?: boolean; fill?: boolean; w?: number }
+  | { k: 'circle'; cx: number; cy: number; r: number; fill?: boolean; w?: number }
+  | { k: 'arc'; cx: number; cy: number; r: number; a0: number; a1: number; w?: number }
+  | { k: 'plusminus'; x: number; y: number; s: number; minus?: boolean }
+  | { k: 'text'; x: number; y: number; text: string; size?: number }
+
+/** Özel sembol pini: adı pad adıyla eşleşir; (x,y) tel bağlantı ucudur */
+export interface SymbolPinDef {
+  name: string
+  x: number
+  y: number
+  side: 'left' | 'right'
+}
+
+/**
+ * Footprint'e özel şema sembolü. Tanımlıysa otomatik kutu/standart glif yerine
+ * bu çizim kullanılır; pin uçları net senkronu ve tel yakalama için otomatik
+ * yerleşimle birebir aynı mekanizmada çalışır.
+ */
+export interface SymbolDef {
+  pins: SymbolPinDef[]
+  prims: SymbolPrim[]
+  /** Gövde kutusu (isabet testi/etiket konumu). Yoksa çizimden hesaplanır */
+  box?: { x: number; y: number; width: number; height: number }
+}
+
+// ─── Footprint 3B modeli ──────────────────────────────────────────────────
+
+/**
+ * Footprint'e bağlı 3B gösterim. Tanımlı değilse kategoriye göre otomatik
+ * basit bir katı cisim üretilir (kutu/silindir).
+ *  - 'param': basit parametrik şekil (kutu/silindir) + yükseklik + renk
+ *  - 'mesh' : içe aktarılmış OBJ/STL örgüsü (footprint-yerel, XY merkezli)
+ */
+export interface FootprintModel3D {
+  kind: 'param' | 'mesh'
+  /** param: gövde şekli */
+  shape?: 'box' | 'cyl'
+  /** param: gövde yüksekliği (mm) */
+  height?: number
+  /** Gövde rengi (hex) — param ve mesh için */
+  color?: string
+  /** mesh: üçgen köşe koordinatları düz dizi (x,y,z,...) */
+  verts?: number[]
+  /** mesh: üçgen indeksleri */
+  tris?: number[]
+  /** mesh: ölçek çarpanı */
+  scale?: number
+  /** mesh: Z ekseni dönüşü (derece) */
+  rotZ?: number
+  /** mesh: kart yüzeyinden yükseklik ofseti (mm) */
+  z?: number
+  /** mesh: kaynak dosya adı */
+  name?: string
+}
+
 export interface Footprint {
   id: string
   name: string
@@ -74,6 +135,10 @@ export interface Footprint {
   /** Elle çizilmiş gövde/dış hat poligonu (footprint-yerel mm). Varsa footprint
    *  editöründe yeniden düzenlenir; silk çizgileri bundan üretilir (issue 12) */
   outline?: Point[]
+  /** Özel şema sembolü (footprint editöründe tasarlanır) */
+  symbol?: SymbolDef
+  /** Özel 3B model (footprint editöründe atanır/oluşturulur) */
+  model3d?: FootprintModel3D
   /** Kullanıcı tanımlı mı (özel footprint editörüyle oluşturulmuş) */
   custom?: boolean
 }
@@ -94,6 +159,8 @@ export interface ComponentInstance {
   side: CopperLayer
   /** Pad adı → net adı eşlemesi */
   padNets: Record<string, string>
+  /** 3B görünümde gövde rengi (hex) — footprint/otomatik rengi geçersiz kılar */
+  color3d?: string
 }
 
 export interface TraceSegment {
@@ -307,9 +374,10 @@ export interface ConnectionFollowSettings {
 export type GridStyle = 'lines' | 'dots' | 'off'
 
 /**
- * Pad adı etiketlerinin görünümü:
- *  'off'        = pad adları yalnız pad içinde (yakınlaşınca) görünür
- *  'zoomed-out' = uzaklaşınca adlar pad'in yanında hizalı gösterilir (varsayılan)
+ * Pad adı etiketlerinin görünümü (EDİTÖR üstü kaplama — silk pin etiketlerinden
+ * ayrıdır):
+ *  'off'        = pad adları yalnız pad içinde (yakınlaşınca) görünür (varsayılan)
+ *  'zoomed-out' = uzaklaşınca adlar pad'in yanında hizalı gösterilir
  *  'always'     = adlar her zaman pad'in yanında hizalı gösterilir
  */
 export type PadLabelMode = 'off' | 'zoomed-out' | 'always'
@@ -319,8 +387,24 @@ export interface ProjectSettings {
   snapToGrid: boolean
   /** Izgara görünümü: çizgi ızgara (varsayılan), nokta ızgara veya kapalı */
   gridStyle: GridStyle
-  /** Pad adı etiketleri görünümü (varsayılan: uzaklaşınca pad yanında) */
+  /** Pad adı etiketleri görünümü — EDİTÖR üstü kaplama (varsayılan: kapalı) */
   padLabelMode: PadLabelMode
+  /**
+   * Silk pin etiketleri: her pad'in adı/numarası silkscreen katmanında pad'in
+   * içine yazı olarak çizilir ve tüm silk dışa aktarımlarına (Gerber/SVG/PNG)
+   * dahil edilir. Yerleşik ve kullanıcı footprint'lerinin hepsinde otomatiktir.
+   * Bu, pinlerin varsayılan gösterim biçimidir; editör üstü kaplama etiketleri
+   * (padLabelMode) yalnızca istenirse açılır. (Varsayılan: AÇIK)
+   */
+  pinSilkLabels: boolean
+  /**
+   * Silk pin etiketleri açıkken, pad'e yeterince yakınlaşıldığında adın pad'in
+   * İÇİNDE de (silk yazısına ek olarak) gösterilmesi. Kapalıysa yalnızca silk
+   * yazısı (pad yanı) görünür, ad pad içinde tekrar edilmez. Silk pin etiketleri
+   * kapalıyken bu ayarın bir etkisi yoktur — pad içi ad zaten her zaman gösterilir.
+   * (Varsayılan: AÇIK)
+   */
+  pinSilkShowOnPad: boolean
   defaultTraceWidth: number
   defaultViaDiameter: number
   defaultViaDrill: number
@@ -359,6 +443,23 @@ export interface ProjectSettings {
    * sembolüdür. (Varsayılan: açık)
    */
   schematicStandardSymbols: boolean
+  /**
+   * Kullanıcı tanımlı (özel) footprint'lerde, footprint editöründe pad adı için
+   * elle belirlenmiş konum (nameDx/nameDy) varsa PCB editöründe de aynen o
+   * konumda gösterilsin. Kapalıysa PCB editörü her zaman otomatik/simetrik
+   * yerleşimi kullanır. Yerleşik (hazır) footprint'lerde zaten elle konum
+   * tanımlanmadığından bu ayar yalnızca kullanıcı footprint'lerini etkiler.
+   * (Varsayılan: AÇIK)
+   */
+  padLabelRespectCustomFootprintPos: boolean
+  /**
+   * Kart dışında gösterilen pad adı etiketleri için yer kalmadığında (çakışma
+   * veya kart dışına taşma) otomatik olarak gizle — özel footprint konumu
+   * elle ayarlanmış pinler DAHİL, bir bileşenin TÜM etiketleri birlikte
+   * gizlenir/gösterilir. Kapalıysa yer olmasa da etiketler her zaman gösterilir.
+   * (Varsayılan: AÇIK)
+   */
+  padLabelAutoHideCrowded: boolean
 }
 
 // ─── Şematik ──────────────────────────────────────────────────────────────
@@ -381,6 +482,12 @@ export interface SchematicWire {
 export interface SchematicData {
   symbols: SchematicSymbol[]
   wires: SchematicWire[]
+  /**
+   * Şema senkronunun EN SON yazdığı pin atamaları: "compId::pad" → net.
+   * Tel silinip/taşınıp pin kopunca bayat atamayı güvenle temizlemek için
+   * kullanılır (elle/PCB tarafında yapılmış atamalara dokunulmaz).
+   */
+  pinNets?: Record<string, string>
 }
 
 export interface Project {
@@ -482,7 +589,9 @@ export const defaultSettings = (): ProjectSettings => ({
   gridSize: 1.27,
   snapToGrid: true,
   gridStyle: 'lines',
-  padLabelMode: 'zoomed-out',
+  padLabelMode: 'off',
+  pinSilkLabels: true,
+  pinSilkShowOnPad: true,
   defaultTraceWidth: 0.4,
   defaultViaDiameter: 0.8,
   defaultViaDrill: 0.4,
@@ -495,7 +604,9 @@ export const defaultSettings = (): ProjectSettings => ({
   clearNetsOnPathDeletePcb: false,
   clearNetsOnPathDeleteSchematic: true,
   removePcbTracesOnSchematicChange: true,
-  schematicStandardSymbols: true
+  schematicStandardSymbols: true,
+  padLabelRespectCustomFootprintPos: true,
+  padLabelAutoHideCrowded: true
 })
 
 export const newProject = (name = 'Yeni Proje'): Project => ({

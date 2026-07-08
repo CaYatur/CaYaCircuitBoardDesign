@@ -3,12 +3,17 @@
 //   • Sürükle: yörüngede döndür (orbit)
 //   • Tekerlek: yakınlaştır/uzaklaştır
 //   • Sağ tık sürükle / Boşluk+sürükle: kaydır (pan)
-//   • Üst / Alt bakış, PCB rengi ve katman görünürlüğü seçenekleri
+// Araçlar (görünümler, katman anahtarları, içe/dışa aktarma) sol araç
+// şeridindedir (EditorToolStrip) — tüm modlarla aynı sabit konum.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
-import { render3D, fit3DCamera, type Camera } from '../render/render3d'
+import { render3D, fit3DCamera, screenToBoardPoint, type Camera } from '../render/render3d'
+import { hitTest } from '../editor/hittest'
+import { emptySelection } from '../types'
 import { loadModelFromFile, pickModelFile } from '../io/model3d'
+import { exportSceneObj } from '../io/scene3d'
+import { downloadBlob, saveTextFile } from '../io/files'
 import { useT } from '../i18n'
 
 export function Board3DView() {
@@ -22,20 +27,23 @@ export function Board3DView() {
   const updateModel3D = useStore((s) => s.updateModel3D)
   const removeModel3D = useStore((s) => s.removeModel3D)
   const setStatus = useStore((s) => s.setStatus)
+  const opts = useStore((s) => s.view3dOpts)
+  const request = useStore((s) => s.view3dRequest)
+  const selection = useStore((s) => s.selection)
+  const setSelection = useStore((s) => s.setSelection)
+  const clearSelection = useStore((s) => s.clearSelection)
   const t = useT()
 
-  const [showComponents, setShowComponents] = useState(true)
-  const [showTraces, setShowTraces] = useState(true)
-  const [showModels, setShowModels] = useState(true)
   const [showPanel, setShowPanel] = useState(false)
+  const [showColors, setShowColors] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const importModel = async () => {
+  const importModel = useCallback(async () => {
     try {
       const file = await pickModelFile()
       if (!file) return
       setBusy(true)
-      const model = await loadModelFromFile(file, project.board)
+      const model = await loadModelFromFile(file, useStore.getState().project.board)
       addModel3D(model)
       setShowPanel(true)
       setStatus(t('3B model içe aktarıldı: {name}', { name: model.name }))
@@ -44,7 +52,7 @@ export function Board3DView() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [addModel3D, setStatus, t])
   const camRef = useRef<Camera>(fit3DCamera(project))
   const [, setTick] = useState(0)
   const redraw = useCallback(() => setTick((n) => n + 1), [])
@@ -73,6 +81,70 @@ export function Board3DView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size])
 
+  const setView = useCallback(
+    (kind: 'iso' | 'top' | 'bottom' | 'front') => {
+      const base = fit3DCamera(useStore.getState().project)
+      if (kind === 'top') { base.pitch = -Math.PI / 2 + 0.06; base.yaw = -Math.PI / 2 }
+      else if (kind === 'bottom') { base.pitch = Math.PI / 2 - 0.06; base.yaw = -Math.PI / 2 }
+      else if (kind === 'front') { base.pitch = -0.08; base.yaw = -Math.PI / 2 }
+      camRef.current = base
+      redraw()
+    },
+    [redraw]
+  )
+
+  /** Geçerli görünümü yüksek çözünürlüklü PNG olarak indir */
+  const exportPng = useCallback(() => {
+    const st = useStore.getState()
+    const scale = 2
+    const off = document.createElement('canvas')
+    off.width = size.w * scale
+    off.height = size.h * scale
+    const ctx = off.getContext('2d')!
+    ctx.setTransform(scale, 0, 0, scale, 0, 0)
+    render3D(ctx, {
+      project: st.project,
+      getFootprint: st.getFootprint,
+      camera: camRef.current,
+      width: size.w,
+      height: size.h,
+      showComponents: st.view3dOpts.showComponents,
+      showTraces: st.view3dOpts.showTraces,
+      showModels: st.view3dOpts.showModels,
+      showPinLabels: st.view3dOpts.showPinLabels
+    })
+    off.toBlob((blob) => {
+      if (!blob) return
+      const safe = (st.project.name || 'kart').replace(/[^\w\-]+/g, '_')
+      downloadBlob(`${safe}_3d.png`, blob)
+      setStatus(t('3B görünüm PNG olarak dışa aktarıldı'))
+    }, 'image/png')
+  }, [size, setStatus, t])
+
+  /** Sahneyi OBJ + MTL modeli olarak indir */
+  const exportObj = useCallback(async () => {
+    const st = useStore.getState()
+    try {
+      const { obj, mtl, mtlName } = exportSceneObj(st.project, st.getFootprint, st.view3dOpts)
+      const safe = (st.project.name || 'kart').replace(/[^\w\-]+/g, '_')
+      const okObj = await saveTextFile(`${safe}_3d.obj`, obj, 'model/obj')
+      if (okObj) await saveTextFile(mtlName, mtl, 'model/mtl')
+      setStatus(t('3B sahne OBJ + MTL olarak dışa aktarıldı'))
+    } catch (err: any) {
+      setStatus(t('Dışa aktarılamadı: {err}', { err: err?.message ?? err }))
+    }
+  }, [setStatus, t])
+
+  // ── Sol şeritten gelen komutlar ──
+  useEffect(() => {
+    if (!request) return
+    useStore.setState({ view3dRequest: null })
+    if (request.kind === 'view') setView(request.v)
+    else if (request.kind === 'import-model') void importModel()
+    else if (request.kind === 'export-png') exportPng()
+    else if (request.kind === 'export-obj') void exportObj()
+  }, [request, setView, importModel, exportPng, exportObj])
+
   // ── Render ──
   useEffect(() => {
     const canvas = canvasRef.current
@@ -88,18 +160,23 @@ export function Board3DView() {
       camera: camRef.current,
       width: size.w,
       height: size.h,
-      showComponents,
-      showTraces,
-      showModels
+      showComponents: opts.showComponents,
+      showTraces: opts.showTraces,
+      showModels: opts.showModels,
+      showPinLabels: opts.showPinLabels,
+      onImageLoad: redraw,
+      selectedComponentIds: selection.componentIds
     })
   })
 
   // ── Fare ──
+  const clickStart = useRef<{ x: number; y: number } | null>(null)
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button === 2 || (e.button === 0 && spaceHeld.current)) {
       drag.current = { mode: 'pan', x: e.clientX, y: e.clientY }
     } else if (e.button === 0) {
       drag.current = { mode: 'orbit', x: e.clientX, y: e.clientY }
+      clickStart.current = { x: e.clientX, y: e.clientY }
     }
   }
   const onMouseMove = (e: React.MouseEvent) => {
@@ -125,7 +202,33 @@ export function Board3DView() {
     }
     redraw()
   }
-  const onMouseUp = () => { drag.current.mode = 'none' }
+  const onMouseUp = (e: React.MouseEvent) => {
+    const cs = clickStart.current
+    clickStart.current = null
+    const wasOrbit = drag.current.mode === 'orbit'
+    drag.current.mode = 'none'
+    if (!wasOrbit || !cs) return
+    // Sürüklenmeden (orbit yapılmadan) bırakıldıysa bu bir TIKLAMA — seçim yap
+    if (Math.hypot(e.clientX - cs.x, e.clientY - cs.y) > 4) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const ray = screenToBoardPoint(camRef.current, size.w, size.h, e.clientX - rect.left, e.clientY - rect.top)
+    if (!ray) return
+    const tol = Math.max(0.15, ray.pixelToMm * 6)
+    const hit = hitTest(project, getFootprint, ray.point, tol)
+    if (!hit) { clearSelection(); return }
+    const sel = emptySelection()
+    if (hit.type === 'component') sel.componentIds = [hit.id]
+    else if (hit.type === 'pad') sel.componentIds = [hit.componentId]
+    else if (hit.type === 'via') sel.viaIds = [hit.id]
+    else if (hit.type === 'trace') sel.traceIds = [hit.id]
+    else if (hit.type === 'text') sel.textIds = [hit.id]
+    else if (hit.type === 'zone') sel.zoneIds = [hit.id]
+    else if (hit.type === 'image') sel.imageIds = [hit.id]
+    setSelection(sel)
+    redraw()
+  }
   const onWheel = (e: React.WheelEvent) => {
     const cam = camRef.current
     cam.dist = Math.max(8, Math.min(2000, cam.dist * Math.exp(e.deltaY * 0.0012)))
@@ -145,14 +248,30 @@ export function Board3DView() {
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
   }, [])
 
-  const setView = (kind: 'iso' | 'top' | 'bottom' | 'front') => {
-    const base = fit3DCamera(project)
-    if (kind === 'top') { base.pitch = -Math.PI / 2 + 0.06; base.yaw = -Math.PI / 2 }
-    else if (kind === 'bottom') { base.pitch = Math.PI / 2 - 0.06; base.yaw = -Math.PI / 2 }
-    else if (kind === 'front') { base.pitch = -0.08; base.yaw = -Math.PI / 2 }
-    camRef.current = base
-    redraw()
+  /** Bileşen 3B rengini güncelle (undo kirletmez) */
+  const setComponentColor = (id: string, color: string | null) => {
+    useStore.getState().updateSettings((p) => {
+      const c = p.components.find((x) => x.id === id)
+      if (c) {
+        if (color) c.color3d = color
+        else delete c.color3d
+      }
+    })
   }
+
+  /** Seçili nesnenin araç çubuğunda gösterilecek kısa etiketi */
+  const selectionLabel = (() => {
+    if (selection.componentIds.length > 0) {
+      const c = project.components.find((x) => x.id === selection.componentIds[0])
+      return c ? c.refDes : null
+    }
+    if (selection.traceIds.length > 0) return t('İz')
+    if (selection.viaIds.length > 0) return 'Via'
+    if (selection.textIds.length > 0) return t('Yazı')
+    if (selection.imageIds.length > 0) return t('Görsel')
+    if (selection.zoneIds.length > 0) return t('Bakır alan')
+    return null
+  })()
 
   return (
     <div className="canvas-container view3d-container" ref={containerRef}>
@@ -167,38 +286,59 @@ export function Board3DView() {
         onContextMenu={(e) => e.preventDefault()}
       />
       <div className="board-toolbar view3d-toolbar">
-        <button onClick={() => setView('iso')} title={t('İzometrik görünüm')}>⬢ {t('İzometrik')}</button>
-        <button onClick={() => setView('top')} title={t('Üstten görünüm')}>▤ {t('Üst')}</button>
-        <button onClick={() => setView('bottom')} title={t('Alttan görünüm')}>▥ {t('Alt')}</button>
-        <button onClick={() => setView('front')} title={t('Önden görünüm')}>▬ {t('Ön')}</button>
-        <span className="board-sep" />
-        <label className="board-check">
-          <input type="checkbox" checked={showComponents} onChange={(e) => { setShowComponents(e.target.checked); redraw() }} />
-          {t('Bileşenler')}
-        </label>
-        <label className="board-check">
-          <input type="checkbox" checked={showTraces} onChange={(e) => { setShowTraces(e.target.checked); redraw() }} />
-          {t('İzler')}
-        </label>
-        {models.length > 0 && (
-          <label className="board-check">
-            <input type="checkbox" checked={showModels} onChange={(e) => { setShowModels(e.target.checked); redraw() }} />
-            {t('Modeller')}
-          </label>
+        {project.components.length > 0 && (
+          <button className={showColors ? 'active' : ''} onClick={() => setShowColors((v) => !v)} title={t('Bileşen renklerini ayrı ayrı değiştir')}>
+            🎨 {t('Renkler')}
+          </button>
         )}
-        <span className="board-sep" />
-        <button disabled={busy} onClick={importModel} title={t('OBJ/STL 3B model içe aktar')}>
-          ＋ {t('3D Model')}
-        </button>
         {models.length > 0 && (
-          <button className={showPanel ? 'active' : ''} onClick={() => setShowPanel((v) => !v)}>
+          <button className={showPanel ? 'active' : ''} onClick={() => setShowPanel((v) => !v)} disabled={busy}>
             ⚙ {t('Modeller')} ({models.length})
           </button>
         )}
+        {selectionLabel && (
+          <button onClick={() => clearSelection()} title={t('Seçimi temizle')}>
+            ✓ {selectionLabel} ✕
+          </button>
+        )}
         <span className="board-hint">
-          {t('Sürükle: döndür · Tekerlek: yakınlaştır · Sağ tık/Boşluk+sürükle: kaydır')}
+          {t('Tıkla: seç · Sürükle: döndür · Tekerlek: yakınlaştır · Sağ tık/Boşluk+sürükle: kaydır')}
         </span>
       </div>
+
+      {showColors && project.components.length > 0 && (
+        <div className="model3d-panel comp3d-panel">
+          <div className="model3d-panel-head">
+            <h4>🎨 {t('Bileşen renkleri')}</h4>
+            <button onClick={() => setShowColors(false)}>✕</button>
+          </div>
+          <div className="model3d-list">
+            {project.components.map((c) => {
+              const fp = getFootprint(c.footprintId)
+              return (
+                <div key={c.id} className="comp3d-row">
+                  <span className="comp3d-ref">{c.refDes}</span>
+                  <span className="comp3d-name" title={fp?.name}>{fp?.name ?? c.footprintId}</span>
+                  <input
+                    type="color"
+                    value={c.color3d ?? '#4a6e50'}
+                    onChange={(e) => setComponentColor(c.id, e.target.value)}
+                    title={t('Renk')}
+                  />
+                  {c.color3d && (
+                    <button
+                      className="model3d-del"
+                      onClick={() => setComponentColor(c.id, null)}
+                      title={t('Varsayılan renge dön')}
+                    >↺</button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <p className="model3d-hint">{t('Renk, footprint 3B modelinin/otomatik gövdenin rengini geçersiz kılar. PNG/OBJ dışa aktarımına yansır.')}</p>
+        </div>
+      )}
 
       {showPanel && models.length > 0 && (
         <div className="model3d-panel">

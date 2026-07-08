@@ -16,6 +16,7 @@ import { snap45, snapPoint, componentBBox, pointInRect, segPointDist, padWorldPo
 import { planFollow, tidyTrace } from '../core/follow'
 import { hitTest, findPadAt } from './hittest'
 import { usePrompt } from '../ui/prompts'
+import { NetPopover, suggestNetName } from '../ui/NetPopover'
 import { t as tr, useT } from '../i18n'
 
 type DragMode =
@@ -844,6 +845,8 @@ export function CanvasEditor() {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
       const s = store.getState()
+      // Bir diyalog açıkken editör kısayolları (undo/sil vb.) çalışmasın
+      if (s.activeDialog) return
 
       if (e.key === 'Shift') shiftHeld.current = true
 
@@ -1038,81 +1041,6 @@ export function CanvasEditor() {
   )
 }
 
-/** Tek pin için hızlı net atama popover'ı (net aracı) */
-function NetPopover({
-  x,
-  y,
-  refDes,
-  padName,
-  current,
-  suggest,
-  onApply,
-  onClose
-}: {
-  x: number
-  y: number
-  refDes: string
-  padName: string
-  current: string
-  suggest: string
-  onApply: (net: string) => void
-  onClose: () => void
-}) {
-  const t = useT()
-  const [value, setValue] = useState(current || suggest)
-  const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    inputRef.current?.focus()
-    inputRef.current?.select()
-  }, [])
-  const QUICK = ['GND', 'VCC', '5V', '3V3', '12V', 'VIN']
-  const left = Math.min(x, window.innerWidth - 260)
-  const top = Math.min(y, window.innerHeight - 190)
-  return (
-    <>
-      <div className="context-menu-backdrop" onMouseDown={onClose} />
-      <div
-        className="net-popover"
-        style={{ position: 'fixed', left, top, zIndex: 160 }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="net-popover-title">
-          ⚡ {refDes} · {t('pad')} {padName}
-        </div>
-        <input
-          ref={inputRef}
-          value={value}
-          placeholder={t('atanmamış')}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            e.stopPropagation()
-            if (e.key === 'Enter') onApply(value)
-            else if (e.key === 'Escape') onClose()
-          }}
-        />
-        <div className="net-popover-quick">
-          {QUICK.map((n) => (
-            <button key={n} onClick={() => onApply(n)}>
-              {n}
-            </button>
-          ))}
-          <button className="net-popover-clear" onClick={() => onApply('')}>
-            {t('Temizle')}
-          </button>
-        </div>
-        <div className="net-popover-actions">
-          <button className="btn-secondary" onClick={onClose}>
-            {t('İptal')}
-          </button>
-          <button className="btn-primary" onClick={() => onApply(value)}>
-            ✓ {t('Uygula')}
-          </button>
-        </div>
-      </div>
-    </>
-  )
-}
-
 /** Seçili iz köşe noktası için sağ tık bağlam menüsü */
 function VertexContextMenu({
   menu,
@@ -1236,10 +1164,4 @@ function normRect(a: Point, b: Point) {
     width: Math.abs(b.x - a.x),
     height: Math.abs(b.y - a.y)
   }
-}
-
-/** Pad adından net adı öner: GND → GND, VCC → VCC, D5 → D5 */
-function suggestNetName(padName: string): string {
-  if (/^(GND|VCC|VIN|3V3|5V|12V|AREF|RST)/i.test(padName)) return padName.toUpperCase()
-  return ''
 }

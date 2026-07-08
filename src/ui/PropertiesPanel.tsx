@@ -231,7 +231,7 @@ export function PropertiesPanel() {
               ))}
             </select>
           </div>
-          <div className="field">
+          <div className="field field-checkbox">
             <label>{t('Kalın')}</label>
             <input
               type="checkbox"
@@ -399,29 +399,25 @@ function ImageProps({ imageId }: { imageId: string }) {
           <option value="bottom-silk">{t('Alt silkscreen')}</option>
         </select>
       </div>
-      <div className="field">
-        <label>
-          <input
-            type="checkbox"
-            checked={!!im.mirror}
-            onChange={(e) =>
-              commit((p) => { const x = p.images.find((q) => q.id === imageId); if (x) x.mirror = e.target.checked })
-            }
-          />{' '}
-          {t('Aynala (yatay)')}
-        </label>
+      <div className="field field-checkbox">
+        <label>{t('Aynala (yatay)')}</label>
+        <input
+          type="checkbox"
+          checked={!!im.mirror}
+          onChange={(e) =>
+            commit((p) => { const x = p.images.find((q) => q.id === imageId); if (x) x.mirror = e.target.checked })
+          }
+        />
       </div>
-      <div className="field">
-        <label>
-          <input
-            type="checkbox"
-            checked={!!im.locked}
-            onChange={(e) =>
-              commit((p) => { const x = p.images.find((q) => q.id === imageId); if (x) x.locked = e.target.checked })
-            }
-          />{' '}
-          {t('En-boy oranını kilitle')}
-        </label>
+      <div className="field field-checkbox">
+        <label>{t('En-boy oranını kilitle')}</label>
+        <input
+          type="checkbox"
+          checked={!!im.locked}
+          onChange={(e) =>
+            commit((p) => { const x = p.images.find((q) => q.id === imageId); if (x) x.locked = e.target.checked })
+          }
+        />
       </div>
       <div className="props-info">{im.width.toFixed(1)} × {im.height.toFixed(1)} mm</div>
     </div>
