@@ -2,7 +2,7 @@
 // Lazer kesim, toner transfer ve dokümantasyon için katman bazlı SVG.
 // Boyutlar gerçek mm cinsindendir (width/height mm birimli).
 
-import type { CopperLayer, Footprint, Project } from '../types'
+import type { CopperLayer, Footprint, Project, VisibleLayer } from '../types'
 import {
   copperLayerGeometry,
   layerPads,
@@ -10,9 +10,11 @@ import {
   silkLayerGeometry,
   allDrills,
   type CopperPrimitive,
-  type PadFlash
+  type PadFlash,
+  type RegionItem
 } from './exportGeometry'
 import { cutoutOutlinePoints } from '../core/boardGeometry'
+import { analyzeNets } from '../core/netlist'
 
 /** Bir kesim şeklinin SVG path 'd' verisi */
 function cutoutPathD(cut: Parameters<typeof cutoutOutlinePoints>[0]): string {
@@ -36,6 +38,25 @@ function primitiveSvg(item: CopperPrimitive, color: string, inflate = 0): string
   }
   const rx = item.shape === 'oval' ? Math.min(w, h) / 2 : 0
   return `<rect x="${(item.x - w / 2).toFixed(4)}" y="${(item.y - h / 2).toFixed(4)}" width="${w.toFixed(4)}" height="${h.toFixed(4)}" rx="${rx.toFixed(4)}" fill="${color}"/>`
+}
+
+/** Bir zone'un otomatik hesaplanmış dolgu şekli (dış sınır + delikler) — tek
+ *  path'te evenodd kuralıyla gerçek delikler (foreign-net boşluk + thermal
+ *  relief) oluşturulur */
+function regionSvg(z: RegionItem, color: string, opacity?: number): string {
+  const parts: string[] = []
+  for (const isl of z.islands) {
+    if (isl.outer.length < 3) continue
+    let d = isl.outer.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ') + ' Z'
+    for (const hole of isl.holes) {
+      if (hole.length < 3) continue
+      d += ' ' + hole.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ') + ' Z'
+    }
+    parts.push(
+      `<path d="${d}" fill="${color}" fill-rule="evenodd"${opacity !== undefined ? ` opacity="${opacity}"` : ''}/>`
+    )
+  }
+  return parts.join('\n')
 }
 
 /** Tek bir pad'i (opsiyonel genişleme ile) SVG şekli olarak */
@@ -75,21 +96,11 @@ export function svgCopperLayer(
   // Zemin
   parts.push(`<rect x="0" y="0" width="${w}" height="${h}" fill="${bg}"/>`)
 
-  // 1) Bakır alanlar
+  // 1) Bakır alanlar (otomatik hesaplanmış gerçek dolgu şekli)
   for (const z of geo.zones) {
-    parts.push(
-      `<rect x="${z.x}" y="${z.y}" width="${z.width}" height="${z.height}" fill="${fg}"/>`
-    )
+    parts.push(regionSvg(z, fg))
   }
-  // 2) Zone varsa farklı netlerin çevresini zemin rengiyle boşalt
-  if (geo.zones.length > 0) {
-    const clearance = Math.max(...geo.zones.map((z) => z.clearance))
-    for (const item of geo.copper) {
-      const sameNet = geo.zones.every((z) => z.net !== '' && item.net === z.net)
-      if (!sameNet) parts.push(primitiveSvg(item, bg, clearance))
-    }
-  }
-  // 3) Tüm bakır
+  // 2) Tüm bakır
   for (const item of geo.copper) {
     parts.push(primitiveSvg(item, fg))
   }
@@ -243,7 +254,7 @@ export function svgComposite(
     const geo = copperLayerGeometry(project, getFootprint, layer)
     parts.push(`<g opacity="${op}">`)
     for (const z of geo.zones) {
-      parts.push(`<rect x="${z.x}" y="${z.y}" width="${z.width}" height="${z.height}" fill="${color}" opacity="0.4"/>`)
+      parts.push(regionSvg(z, color, 0.4))
     }
     for (const item of geo.copper) parts.push(primitiveSvg(item, color))
     parts.push('</g>')
@@ -278,7 +289,7 @@ export function svgOutlineTraces(
   for (const layer of layers) {
     const geo = copperLayerGeometry(project, getFootprint, layer)
     for (const z of geo.zones) {
-      parts.push(`<rect x="${z.x}" y="${z.y}" width="${z.width}" height="${z.height}" fill="#000000"/>`)
+      parts.push(regionSvg(z, '#000000'))
     }
     for (const item of geo.copper) parts.push(primitiveSvg(item, '#000000'))
   }
@@ -330,9 +341,7 @@ export function svgFullBoard(
     const geo = copperLayerGeometry(project, getFootprint, layer)
     parts.push(`<g>`)
     for (const z of geo.zones) {
-      parts.push(
-        `<rect x="${z.x}" y="${z.y}" width="${z.width}" height="${z.height}" fill="${color}" opacity="0.35"/>`
-      )
+      parts.push(regionSvg(z, color, 0.35))
     }
     for (const item of geo.copper) parts.push(primitiveSvg(item, color))
     parts.push('</g>')
@@ -359,6 +368,82 @@ export function svgFullBoard(
     parts.push(
       `<circle cx="${dr.x}" cy="${dr.y}" r="${(dr.diameter / 2).toFixed(4)}" fill="#ffffff" stroke="#000000" stroke-width="${(strokeW * 0.5).toFixed(4)}"/>`
     )
+  }
+
+  return svgDoc(w, h, parts.join('\n'))
+}
+
+/**
+ * Özel dışa aktarım: kullanıcının seçtiği katmanlar (Katmanlar panelindeki
+ * aynı 8 katman — üst/alt bakır, üst/alt silk, bakır alanlar, delikler, kart
+ * sınırı, ratsnest) hangi kombinasyonda seçilirse seçilsin TEK bir SVG'de
+ * birleştirilir. Varsayılan olarak her katman ayrı renkle çizilir ki üst üste
+ * bindiklerinde ayırt edilebilsin; `blackWhite` açıksa tüm renkler zorla
+ * siyaha çevrilir (lazer/baskı için tek renkli, net çıktı).
+ */
+export function svgCustomExport(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  layers: Record<VisibleLayer, boolean>,
+  blackWhite = true
+): string {
+  const w = project.board.width
+  const h = project.board.height
+  const strokeW = project.board.outlineWidth ?? 0.3
+  const K = '#000000'
+  const parts: string[] = [`<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>`]
+
+  const copperSides: { side: CopperLayer; on: boolean; color: string; zoneColor: string }[] = [
+    { side: 'bottom', on: layers.bottom, color: blackWhite ? K : '#9a9a9a', zoneColor: blackWhite ? K : '#4a7fdb' },
+    { side: 'top', on: layers.top, color: K, zoneColor: blackWhite ? K : '#d0402f' }
+  ]
+  for (const { side, on, color, zoneColor } of copperSides) {
+    if (!on && !layers.zones) continue
+    const geo = copperLayerGeometry(project, getFootprint, side)
+    if (layers.zones) {
+      for (const z of geo.zones) parts.push(regionSvg(z, zoneColor, 0.55))
+    }
+    if (on) {
+      for (const item of geo.copper) parts.push(primitiveSvg(item, color))
+    }
+  }
+
+  if (layers['top-silk']) {
+    for (const s of silkLayerGeometry(project, getFootprint, 'top')) {
+      parts.push(primitiveSvg(s, blackWhite ? K : '#1c4e9c'))
+    }
+  }
+  if (layers['bottom-silk']) {
+    for (const s of silkLayerGeometry(project, getFootprint, 'bottom')) {
+      parts.push(primitiveSvg(s, blackWhite ? K : '#7a3fa0'))
+    }
+  }
+
+  if (layers.outline) {
+    const pts = outlinePoints(project)
+    const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ') + ' Z'
+    parts.push(`<path d="${d}" fill="none" stroke="#000000" stroke-width="${strokeW.toFixed(4)}" stroke-linejoin="round"/>`)
+    for (const cut of project.board.cutouts ?? []) {
+      parts.push(`<path d="${cutoutPathD(cut)}" fill="none" stroke="#000000" stroke-width="${strokeW.toFixed(4)}"/>`)
+    }
+  }
+
+  if (layers.drill) {
+    for (const dr of allDrills(project, getFootprint)) {
+      parts.push(
+        `<circle cx="${dr.x}" cy="${dr.y}" r="${(dr.diameter / 2).toFixed(4)}" fill="#ffffff" stroke="#000000" stroke-width="${(strokeW * 0.5).toFixed(4)}"/>`
+      )
+    }
+  }
+
+  if (layers.ratsnest) {
+    const { airwires } = analyzeNets(project, getFootprint)
+    const rColor = blackWhite ? K : '#e8d44d'
+    for (const aw of airwires) {
+      parts.push(
+        `<line x1="${aw.x1.toFixed(4)}" y1="${aw.y1.toFixed(4)}" x2="${aw.x2.toFixed(4)}" y2="${aw.y2.toFixed(4)}" stroke="${rColor}" stroke-width="0.15" stroke-dasharray="0.8,0.6"/>`
+      )
+    }
   }
 
   return svgDoc(w, h, parts.join('\n'))

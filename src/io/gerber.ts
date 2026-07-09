@@ -131,29 +131,23 @@ export function gerberCopperLayer(
   const gb = new GerberBuilder(fn, project.board.height)
   const geo = copperLayerGeometry(project, getFootprint, layer)
 
-  // 1) Bakır alanlar (dark)
+  // 1) Bakır alanlar (zone dolguları — otomatik hesaplanmış gerçek şekil):
+  // her ada dış sınırı dark, delikleri (foreign-net boşluk + thermal relief) clear
   for (const z of geo.zones) {
-    gb.region([
-      { x: z.x, y: z.y },
-      { x: z.x + z.width, y: z.y },
-      { x: z.x + z.width, y: z.y + z.height },
-      { x: z.x, y: z.y + z.height },
-      { x: z.x, y: z.y }
-    ])
-  }
-
-  // 2) Zone varsa: farklı netlerin çevresini boşalt (clear)
-  if (geo.zones.length > 0) {
-    const clearance = Math.max(...geo.zones.map((z) => z.clearance))
-    gb.polarity(false)
-    for (const item of geo.copper) {
-      const belongsToAllZones = geo.zones.every((z) => z.net !== '' && item.net === z.net)
-      if (!belongsToAllZones) drawPrimitive(gb, item, clearance)
+    for (const isl of z.islands) {
+      if (isl.outer.length < 3) continue
+      gb.polarity(true)
+      gb.region([...isl.outer, isl.outer[0]])
+      for (const hole of isl.holes) {
+        if (hole.length < 3) continue
+        gb.polarity(false)
+        gb.region([...hole, hole[0]])
+      }
     }
-    gb.polarity(true)
   }
+  gb.polarity(true)
 
-  // 3) Tüm bakır (dark)
+  // 2) Tüm bakır (dark)
   for (const item of geo.copper) {
     drawPrimitive(gb, item)
   }

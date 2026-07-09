@@ -17,11 +17,14 @@ import {
   localToWorld,
   padWorldPos,
   padWorldSize,
-  componentBBox
+  componentBBox,
+  transformArcAngles,
+  pointInPolygon
 } from '../core/geometry'
 import { placeText } from './vectorFont'
 import { pinSilkLabels } from '../core/pinSilk'
 import { getCachedImage } from './imageCache'
+import type { ZoneFillResult } from '../core/zoneFill'
 import {
   boardEditablePolygon,
   cutoutOutlinePoints,
@@ -100,9 +103,16 @@ export interface RenderState {
   height: number
   visibleLayers: Record<VisibleLayer, boolean>
   activeLayer: CopperLayer
+  /** Kartı arkadan görüntüle — tüm sahne sol-sağ aynalanır (gerçek fiziksel
+   *  kartı ters çevirip arka yüzden bakmanın 2B karşılığı) */
+  viewFlipped?: boolean
   selection: Selection
   drawingTrace: { points: Point[]; layer: CopperLayer; width: number } | null
   drawingBoardOutline: Point[] | null
+  /** Çizilmekte olan serbest bakır alan (zone) sınırı */
+  drawingZone: Point[] | null
+  /** Zone id → otomatik hesaplanmış gerçek dolgu şekli (bkz. core/zoneFill.ts) */
+  zoneFills: Map<string, ZoneFillResult>
   mouseWorld: Point | null
   /** Çizim sırasında 45° yaslanmış imleç noktası */
   snappedCursor: Point | null
@@ -122,6 +132,13 @@ export interface RenderState {
 export function render(ctx: CanvasRenderingContext2D, s: RenderState): void {
   const { view, project } = s
   ctx.save()
+  if (s.viewFlipped) {
+    // Tüm sahneyi kartın/tuvalin dikey ekseninde aynala — fiziksel kartı
+    // ters çevirip arka yüzden bakmanın karşılığı (yazılar da doğru şekilde
+    // aynalanır: alt katmandaki metin artık okunaklı, üstteki ters görünür)
+    ctx.translate(s.width, 0)
+    ctx.scale(-1, 1)
+  }
   ctx.fillStyle = COLORS.bg
   ctx.fillRect(0, 0, s.width, s.height)
 
@@ -131,9 +148,14 @@ export function render(ctx: CanvasRenderingContext2D, s: RenderState): void {
   ctx.fillStyle = project.board.color || COLORS.boardFill
   ctx.fill()
 
-  // ── İç kesimler (delik/yuva) — zemin rengiyle boşalt ──
+  // ── İç kesimler (delik/yuva) — zemin rengiyle boşalt; kart dış hattına
+  // kliplenir ki kesim kenarı taşarsa dolgu kartın dışına sarkmasın ──
   const cutouts = project.board.cutouts
   if (cutouts && cutouts.length > 0) {
+    ctx.save()
+    ctx.beginPath()
+    boardOutlinePath(ctx, view, project)
+    ctx.clip()
     ctx.fillStyle = COLORS.bg
     for (const cut of cutouts) {
       const pts = cutoutOutlinePoints(cut)
@@ -148,6 +170,7 @@ export function render(ctx: CanvasRenderingContext2D, s: RenderState): void {
       ctx.closePath()
       ctx.fill()
     }
+    ctx.restore()
   }
 
   // ── Izgara (kart alanına kırpılmış, kesimler hariç) ──
@@ -163,18 +186,80 @@ export function render(ctx: CanvasRenderingContext2D, s: RenderState): void {
   const topVisible = s.visibleLayers.top
   const bottomVisible = s.visibleLayers.bottom
 
-  // ── Bakır alanlar (zone) ──
+  // ── Bakır alanlar (zone) — otomatik hesaplanmış gerçek dolgu şekli:
+  // farklı netteki öğelerin çevresi boşaltılmış, aynı netteki THT pad/via'lara
+  // ısı yalıtım (thermal relief) köprüleri eklenmiş (bkz. core/zoneFill.ts) ──
   if (s.visibleLayers.zones) {
     for (const z of project.zones) {
       if (z.layer === 'top' && !topVisible) continue
       if (z.layer === 'bottom' && !bottomVisible) continue
+      const fill = s.zoneFills.get(z.id)
       ctx.fillStyle = z.layer === 'top' ? COLORS.zoneTop : COLORS.zoneBottom
-      ctx.fillRect(z.x * view.scale + view.x, z.y * view.scale + view.y, z.width * view.scale, z.height * view.scale)
+      if (fill && fill.islands.length > 0) {
+        for (const isl of fill.islands) {
+          if (isl.outer.length < 3) continue
+          ctx.beginPath()
+          const p0 = worldToScreen(view, isl.outer[0])
+          ctx.moveTo(p0.x, p0.y)
+          for (const p of isl.outer.slice(1)) {
+            const sp = worldToScreen(view, p)
+            ctx.lineTo(sp.x, sp.y)
+          }
+          ctx.closePath()
+          for (const hole of isl.holes) {
+            if (hole.length < 3) continue
+            const h0 = worldToScreen(view, hole[0])
+            ctx.moveTo(h0.x, h0.y)
+            for (const p of hole.slice(1)) {
+              const sp = worldToScreen(view, p)
+              ctx.lineTo(sp.x, sp.y)
+            }
+            ctx.closePath()
+          }
+          ctx.fill('evenodd')
+        }
+      }
+      // Çizilen sınır (dış hat) — kesikli çizgi
       ctx.strokeStyle = z.layer === 'top' ? COLORS.top : COLORS.bottom
       ctx.lineWidth = 1
       ctx.setLineDash([4, 3])
-      ctx.strokeRect(z.x * view.scale + view.x, z.y * view.scale + view.y, z.width * view.scale, z.height * view.scale)
+      ctx.beginPath()
+      const b0 = worldToScreen(view, z.points[0])
+      ctx.moveTo(b0.x, b0.y)
+      for (const p of z.points.slice(1)) {
+        const sp = worldToScreen(view, p)
+        ctx.lineTo(sp.x, sp.y)
+      }
+      ctx.closePath()
+      ctx.stroke()
       ctx.setLineDash([])
+    }
+  }
+
+  // ── Çizilmekte olan zone taslağı ──
+  if (s.drawingZone && s.drawingZone.length > 0) {
+    ctx.strokeStyle = '#ffd166'
+    ctx.lineWidth = 1.5
+    ctx.setLineDash([5, 3])
+    ctx.beginPath()
+    const z0 = worldToScreen(view, s.drawingZone[0])
+    ctx.moveTo(z0.x, z0.y)
+    for (const p of s.drawingZone.slice(1)) {
+      const sp = worldToScreen(view, p)
+      ctx.lineTo(sp.x, sp.y)
+    }
+    if (s.mouseWorld) {
+      const sp = worldToScreen(view, s.mouseWorld)
+      ctx.lineTo(sp.x, sp.y)
+    }
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = '#ffd166'
+    for (const p of s.drawingZone) {
+      const sp = worldToScreen(view, p)
+      ctx.beginPath()
+      ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2)
+      ctx.fill()
     }
   }
 
@@ -237,8 +322,13 @@ export function render(ctx: CanvasRenderingContext2D, s: RenderState): void {
     ctx.strokeStyle = COLORS.boardEdge
     ctx.lineWidth = edgePx
     ctx.stroke()
-    // İç kesim sınırları
+    // İç kesim sınırları — kart dış hattına kliplenir ki kesim kart kenarını
+    // taşarsa çizgi kartın dışına "çerçeve" gibi sarkmasın
     if (cutouts && cutouts.length > 0) {
+      ctx.save()
+      ctx.beginPath()
+      boardOutlinePath(ctx, view, project)
+      ctx.clip()
       ctx.strokeStyle = COLORS.boardEdge
       ctx.lineWidth = Math.max(1, edgePx * 0.85)
       for (const cut of cutouts) {
@@ -254,6 +344,7 @@ export function render(ctx: CanvasRenderingContext2D, s: RenderState): void {
         ctx.closePath()
         ctx.stroke()
       }
+      ctx.restore()
     }
     for (const h of project.board.mountingHoles) {
       const p = worldToScreen(view, h)
@@ -807,6 +898,13 @@ function drawComponentSilk(
       ctx.beginPath()
       ctx.arc(c.x, c.y, el.r * view.scale, 0, Math.PI * 2)
       ctx.stroke()
+    } else if (el.kind === 'arc') {
+      const c = worldToScreen(view, localToWorld(comp, { x: el.cx, y: el.cy }))
+      const [wa0, wa1] = transformArcAngles(el.a0, el.a1, comp)
+      ctx.lineWidth = Math.max(1, el.width * view.scale)
+      ctx.beginPath()
+      ctx.arc(c.x, c.y, el.r * view.scale, wa0, wa1)
+      ctx.stroke()
     } else {
       const anchor = localToWorld(comp, { x: el.x, y: el.y })
       const { strokes, strokeWidth } = placeText(
@@ -922,22 +1020,6 @@ function drawPadLabels(ctx: CanvasRenderingContext2D, s: RenderState) {
 function boardPolygonWorld(project: Project): Point[] {
   const ed = boardEditablePolygon(project.board)
   return filletPolygon(ed.points, ed.radii, 6)
-}
-
-/** Nokta poligonun içinde mi? (ışın yöntemi) */
-function pointInPolygon(p: Point, poly: Point[]): boolean {
-  let inside = false
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i]
-    const b = poly[j]
-    if (
-      a.y > p.y !== b.y > p.y &&
-      p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x
-    ) {
-      inside = !inside
-    }
-  }
-  return inside
 }
 
 /** Noktanın poligon kenarlarına en kısa mesafesi */
@@ -1215,12 +1297,15 @@ function drawSelection(ctx: CanvasRenderingContext2D, s: RenderState) {
   for (const z of project.zones) {
     if (!selection.zoneIds.includes(z.id)) continue
     ctx.lineWidth = 2
-    ctx.strokeRect(
-      z.x * view.scale + view.x - 2,
-      z.y * view.scale + view.y - 2,
-      z.width * view.scale + 4,
-      z.height * view.scale + 4
-    )
+    ctx.beginPath()
+    const zp0 = worldToScreen(view, z.points[0])
+    ctx.moveTo(zp0.x, zp0.y)
+    for (const p of z.points.slice(1)) {
+      const sp = worldToScreen(view, p)
+      ctx.lineTo(sp.x, sp.y)
+    }
+    ctx.closePath()
+    ctx.stroke()
   }
 
   // Görsel seçimi — döndürülmüş çerçeve + köşe tutamaçları

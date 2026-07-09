@@ -409,6 +409,30 @@ select option {
 }
 
 /* ─── Katman paneli ─── */
+.layer-flip-btn {
+  display: block;
+  width: 100%;
+  margin: 4px 0 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.layer-flip-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.layer-flip-btn.on {
+  background: var(--accent-dim);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 .layer-row {
   display: flex;
   align-items: center;
@@ -898,6 +922,12 @@ select option {
   align-items: center;
   gap: 5px;
   cursor: pointer;
+}
+
+.custom-layer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px 16px;
 }
 
 .gcode-options {
@@ -2459,6 +2489,32 @@ select option {
   color: var(--warn, #ffb347);
   font-size: 12px;
   margin: 4px 0;
+}
+
+.fp-3d-labels {
+  margin: 4px 0 8px;
+}
+
+.fp-3d-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.fp-3d-label-text {
+  width: 80px;
+  padding: 3px 5px;
+  background: var(--bg-input, #0e1116);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
 }
 
 /* Onay/istem penceresi her katmanın (başlangıç ekranı dahil) üstünde olmalı */

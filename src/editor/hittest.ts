@@ -2,7 +2,7 @@
 // İmleç altındaki nesneyi bulur. Öncelik: pad > via > komponent gövdesi >
 // iz > yazı > bakır alan.
 
-import type { Footprint, Point, Project } from '../types'
+import type { Footprint, Point, Project, Via } from '../types'
 import {
   capsulesTouch,
   circleCapsule,
@@ -10,6 +10,7 @@ import {
   hitTrace,
   padCapsule,
   padWorldPos,
+  pointInPolygon,
   pointInRect
 } from '../core/geometry'
 import { textWidth } from '../render/vectorFont'
@@ -77,7 +78,7 @@ export function hitTest(
 
   // Bakır alanlar
   for (const z of project.zones) {
-    if (pointInRect(p, { x: z.x, y: z.y, width: z.width, height: z.height })) {
+    if (pointInPolygon(p, z.points)) {
       return { type: 'zone', id: z.id }
     }
   }
@@ -101,6 +102,16 @@ export function hitTest(
     }
   }
 
+  return null
+}
+
+/** İmlecin altındaki via'yı bul (iz çizimi sırasında katlama/katman atlama için) */
+export function findViaAt(project: Project, p: Point, tol: number): Via | null {
+  for (const via of project.vias) {
+    if (Math.hypot(p.x - via.x, p.y - via.y) <= via.diameter / 2 + tol) {
+      return via
+    }
+  }
   return null
 }
 

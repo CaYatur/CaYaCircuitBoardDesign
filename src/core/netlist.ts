@@ -9,13 +9,14 @@ import {
   Capsule,
   capsuleGap,
   capsulesTouch,
-  capsuleRectGap,
+  capsulePolygonGap,
   circleCapsule,
   dist,
   padCapsule,
   padCopperLayers,
   padWorldPos,
-  pointInRect
+  pointInPolygon,
+  segSegDist
 } from './geometry'
 
 export interface CopperItem {
@@ -27,7 +28,7 @@ export interface CopperItem {
   padName?: string
   layers: CopperLayer[]
   capsule?: Capsule
-  zoneRect?: { x: number; y: number; width: number; height: number }
+  zonePoly?: Point[]
   /** Kullanıcının atadığı net ('' = atanmamış) */
   assignedNet: string
   x: number
@@ -145,18 +146,32 @@ export function buildCopperItems(
   }
 
   for (const zone of project.zones) {
+    const xs = zone.points.map((p) => p.x)
+    const ys = zone.points.map((p) => p.y)
     items.push({
       kind: 'zone',
       ownerId: zone.id,
       layers: [zone.layer],
-      zoneRect: { x: zone.x, y: zone.y, width: zone.width, height: zone.height },
+      zonePoly: zone.points,
       assignedNet: zone.net,
-      x: zone.x + zone.width / 2,
-      y: zone.y + zone.height / 2
+      x: (Math.min(...xs) + Math.max(...xs)) / 2,
+      y: (Math.min(...ys) + Math.max(...ys)) / 2
     })
   }
 
   return items
+}
+
+/** İki (kapalı) poligon kesişiyor veya birbirine değiyor mu? */
+function polygonsIntersect(a: Point[], b: Point[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    const a1 = a[i]
+    const a2 = a[(i + 1) % a.length]
+    for (let j = 0; j < b.length; j++) {
+      if (segSegDist(a1, a2, b[j], b[(j + 1) % b.length]) <= 1e-6) return true
+    }
+  }
+  return (a.length > 0 && pointInPolygon(a[0], b)) || (b.length > 0 && pointInPolygon(b[0], a))
 }
 
 /** İki bakır öğe geometrik olarak temas ediyor mu? */
@@ -165,28 +180,19 @@ function itemsTouch(a: CopperItem, b: CopperItem): boolean {
   if (a.capsule && b.capsule) return capsulesTouch(a.capsule, b.capsule)
   // Zone temasları: zone yalnızca kendi netindeki öğelere bağlanır
   // (render/export sırasında diğer netlerin çevresi boşaltılır)
-  const zone = a.zoneRect ? a : b
-  const other = a.zoneRect ? b : a
-  if (!zone.zoneRect) return false
-  if (zone.assignedNet === '' || zone.assignedNet !== (other.assignedNet || zone.assignedNet)) {
-    // Net ataması uyuşmuyorsa fiziksel temas kabul edilmez (boşluk açılır)
-    if (other.assignedNet !== '' && other.assignedNet !== zone.assignedNet) return false
-  }
+  const zone = a.zonePoly ? a : b
+  const other = a.zonePoly ? b : a
+  if (!zone.zonePoly) return false
+  // Net ataması uyuşmuyorsa (ya da zone'un neti yoksa) fiziksel temas kabul edilmez
+  if (zone.assignedNet === '' || other.assignedNet !== zone.assignedNet) return false
   if (!other.capsule) {
-    // zone-zone: dikdörtgen kesişimi
-    if (!b.zoneRect || !a.zoneRect) return false
-    return (
-      a.zoneRect.x < b.zoneRect.x + b.zoneRect.width &&
-      a.zoneRect.x + a.zoneRect.width > b.zoneRect.x &&
-      a.zoneRect.y < b.zoneRect.y + b.zoneRect.height &&
-      a.zoneRect.y + a.zoneRect.height > b.zoneRect.y
-    )
+    // zone-zone: poligon kesişimi
+    if (!other.zonePoly) return false
+    return polygonsIntersect(zone.zonePoly, other.zonePoly)
   }
-  // Yalnızca aynı nete atanmış öğeler zone'a bağlanır
-  if (other.assignedNet !== zone.assignedNet) return false
   return (
-    capsuleRectGap(other.capsule, zone.zoneRect) <= 1e-3 ||
-    pointInRect({ x: other.x, y: other.y }, zone.zoneRect)
+    capsulePolygonGap(other.capsule, zone.zonePoly) <= 1e-3 ||
+    pointInPolygon({ x: other.x, y: other.y }, zone.zonePoly)
   )
 }
 
@@ -201,11 +207,12 @@ export function analyzeNets(
 
   // Kaba uzamsal filtre: sınır kutusu çakışmayanları atla
   const bounds = items.map((it) => {
-    if (it.zoneRect) {
+    if (it.zonePoly) {
+      const xs = it.zonePoly.map((p) => p.x)
+      const ys = it.zonePoly.map((p) => p.y)
       return {
-        minX: it.zoneRect.x, minY: it.zoneRect.y,
-        maxX: it.zoneRect.x + it.zoneRect.width,
-        maxY: it.zoneRect.y + it.zoneRect.height
+        minX: Math.min(...xs), minY: Math.min(...ys),
+        maxX: Math.max(...xs), maxY: Math.max(...ys)
       }
     }
     const c = it.capsule!

@@ -22,6 +22,8 @@ export function LayerPanel() {
   const activeLayer = useStore((s) => s.activeLayer)
   const setActiveLayer = useStore((s) => s.setActiveLayer)
   const layerCount = useStore((s) => s.project.board.layerCount)
+  const viewFlipped = useStore((s) => s.viewFlipped)
+  const toggleViewFlipped = useStore((s) => s.toggleViewFlipped)
   const t = useT()
 
   return (
@@ -30,6 +32,14 @@ export function LayerPanel() {
         {t('Katmanlar')}{' '}
         <small>{layerCount === 1 ? t('(tek katman)') : t('(çift katman)')}</small>
       </h3>
+      <button
+        className={`layer-flip-btn ${viewFlipped ? 'on' : ''}`}
+        disabled={layerCount === 1}
+        title={t('Kartı arkadan görüntüle (sol-sağ aynalanmış görünüm)')}
+        onClick={() => toggleViewFlipped()}
+      >
+        🔄 {viewFlipped ? t('Alttan görünüyor') : t('Alttan Gör')}
+      </button>
       {layers.map((l) => {
         const disabled =
           layerCount === 1 && (l.id === 'bottom' || l.id === 'bottom-silk')

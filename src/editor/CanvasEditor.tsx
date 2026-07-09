@@ -14,7 +14,9 @@ import {
 import { analyzeNets, type NetAnalysis } from '../core/netlist'
 import { snap45, snapPoint, componentBBox, pointInRect, segPointDist, padWorldPos } from '../core/geometry'
 import { planFollow, tidyTrace } from '../core/follow'
-import { hitTest, findPadAt } from './hittest'
+import { hitTest, findPadAt, findViaAt } from './hittest'
+import { computeZoneFill, type ZoneFillResult } from '../core/zoneFill'
+import { rawCopperItems } from '../io/exportGeometry'
 import { usePrompt } from '../ui/prompts'
 import { NetPopover, suggestNetName } from '../ui/NetPopover'
 import { t as tr, useT } from '../i18n'
@@ -35,7 +37,6 @@ type DragMode =
   | { kind: 'vertex'; traceId: string; index: number; moved: boolean }
   | { kind: 'marquee'; start: Point; current: Point }
   | { kind: 'measure'; start: Point; current: Point }
-  | { kind: 'zone'; start: Point; current: Point }
 
 export function CanvasEditor() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -51,6 +52,7 @@ export function CanvasEditor() {
   // ── Performans: sürükleme sırasında ağır analizleri (ratsnest/kısa devre)
   // yeniden hesaplamayı erteler; hareketleri rAF ile kareye bir kez uygular ──
   const analysisRef = useRef<NetAnalysis | null>(null)
+  const zoneFillsRef = useRef<Map<string, ZoneFillResult> | null>(null)
   const [analysisEpoch, setAnalysisEpoch] = useState(0)
   const pendingDrag = useRef<{ raw: Point; shift: boolean } | null>(null)
   const rafId = useRef<number | null>(null)
@@ -71,10 +73,12 @@ export function CanvasEditor() {
   const tool = useStore((s) => s.tool)
   const activeLayer = useStore((s) => s.activeLayer)
   const visibleLayers = useStore((s) => s.visibleLayers)
+  const viewFlipped = useStore((s) => s.viewFlipped)
   const placingFootprintId = useStore((s) => s.placingFootprintId)
   const placingImage = useStore((s) => s.placingImage)
   const drawingTrace = useStore((s) => s.drawingTrace)
   const drawingBoardOutline = useStore((s) => s.drawingBoardOutline)
+  const drawingZone = useStore((s) => s.drawingZone)
   const drcViolations = useStore((s) => s.drcViolations)
   const zoomTarget = useStore((s) => s.zoomTarget)
   const getFootprint = useStore((s) => s.getFootprint)
@@ -91,6 +95,21 @@ export function CanvasEditor() {
     const a = analyzeNets(project, getFootprint)
     analysisRef.current = a
     return a
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, getFootprint, analysisEpoch])
+
+  // Zone dolgu şekilleri (bkz. core/zoneFill.ts) — rasterizasyon gerektirdiğinden
+  // sürükleme sırasında son sonuç yeniden kullanılır, analysisEpoch'la tazelenir.
+  const zoneFills = useMemo(() => {
+    if (dragRef.current.kind !== 'none' && zoneFillsRef.current) {
+      return zoneFillsRef.current
+    }
+    const map = new Map<string, ZoneFillResult>()
+    for (const z of project.zones) {
+      map.set(z.id, computeZoneFill(z, rawCopperItems(project, getFootprint, z.layer)))
+    }
+    zoneFillsRef.current = map
+    return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, getFootprint, analysisEpoch])
 
@@ -131,12 +150,13 @@ export function CanvasEditor() {
   const toWorld = useCallback(
     (e: { clientX: number; clientY: number }): Point => {
       const rect = canvasRef.current!.getBoundingClientRect()
+      const sx = e.clientX - rect.left
       return screenToWorld(view, {
-        x: e.clientX - rect.left,
+        x: viewFlipped ? size.w - sx : sx,
         y: e.clientY - rect.top
       })
     },
-    [view]
+    [view, viewFlipped, size.w]
   )
 
   const snap = useCallback(
@@ -156,17 +176,22 @@ export function CanvasEditor() {
    * tam nereye gelirse oraya, hassas serbest yerleştirme.
    */
   const traceTarget = useCallback(
-    (raw: Point, fine = false): { point: Point; pad: ReturnType<typeof findPadAt> } => {
+    (
+      raw: Point,
+      fine = false
+    ): { point: Point; pad: ReturnType<typeof findPadAt>; via: ReturnType<typeof findViaAt> } => {
       const s = store.getState()
       const pad = findPadAt(s.project, s.getFootprint, raw, tolWorld * 1.5)
-      if (pad) return { point: pad.center, pad }
-      if (fine) return { point: raw, pad: null }
+      if (pad) return { point: pad.center, pad, via: null }
+      const via = findViaAt(s.project, raw, tolWorld * 1.5)
+      if (via) return { point: { x: via.x, y: via.y }, pad: null, via }
+      if (fine) return { point: raw, pad: null, via: null }
       const dt = s.drawingTrace
       if (dt && dt.points.length > 0) {
         const last = dt.points[dt.points.length - 1]
-        return { point: snap(snap45(last, raw)), pad: null }
+        return { point: snap(snap45(last, raw)), pad: null, via: null }
       }
-      return { point: snap(raw), pad: null }
+      return { point: snap(raw), pad: null, via: null }
     },
     [store, snap, tolWorld]
   )
@@ -197,6 +222,7 @@ export function CanvasEditor() {
       height: size.h,
       visibleLayers,
       activeLayer,
+      viewFlipped,
       selection,
       drawingTrace,
       drawingBoardOutline,
@@ -208,9 +234,9 @@ export function CanvasEditor() {
       marquee:
         drag.kind === 'marquee'
           ? { x1: drag.start.x, y1: drag.start.y, x2: drag.current.x, y2: drag.current.y }
-          : drag.kind === 'zone'
-            ? { x1: drag.start.x, y1: drag.start.y, x2: drag.current.x, y2: drag.current.y }
-            : null,
+          : null,
+      drawingZone,
+      zoneFills,
       measure:
         drag.kind === 'measure'
           ? { a: drag.start, b: drag.current }
@@ -220,8 +246,8 @@ export function CanvasEditor() {
       onImageLoad: () => setImageEpoch((n) => n + 1)
     })
   }, [
-    project, getFootprint, view, size, visibleLayers, activeLayer, selection,
-    drawingTrace, drawingBoardOutline, mouseWorld, snappedCursor, analysis, drcViolations,
+    project, getFootprint, view, size, visibleLayers, activeLayer, viewFlipped, selection,
+    drawingTrace, drawingBoardOutline, drawingZone, zoneFills, mouseWorld, snappedCursor, analysis, drcViolations,
     placingFootprintId, dragTick, measureResult, selectedVertex, placingImage, imageEpoch
   ])
 
@@ -229,8 +255,12 @@ export function CanvasEditor() {
   const onWheel = useCallback(
     (e: React.WheelEvent) => {
       const rect = canvasRef.current!.getBoundingClientRect()
-      const mx = e.clientX - rect.left
+      const rawMx = e.clientX - rect.left
       const my = e.clientY - rect.top
+      // Aynalanmış görünümde view.x render'dan ÖNCEki (aynalanmamış) uzayda
+      // tutulur — imlecin altındaki noktayı sabit tutmak için mx da aynı
+      // uzaya çevrilmeli, yoksa yakınlaştırma imlecin ayna simetriğine kayar
+      const mx = viewFlipped ? size.w - rawMx : rawMx
       const factor = Math.exp(-e.deltaY * 0.0012)
       setView((v) => {
         const scale = Math.min(300, Math.max(1.5, v.scale * factor))
@@ -238,7 +268,7 @@ export function CanvasEditor() {
         return { scale, x: mx - (mx - v.x) * k, y: my - (my - v.y) * k }
       })
     },
-    []
+    [viewFlipped, size.w]
   )
 
   const onMouseDown = useCallback(
@@ -269,6 +299,14 @@ export function CanvasEditor() {
             return
           }
         }
+      }
+
+      // Sağ tık: iz çizerken via bırak + katman değiştir (pan yerine) — gerçek
+      // EDA araçlarındaki davranış ('V' kısayoluyla aynı)
+      if (e.button === 2 && s.tool === 'trace' && s.drawingTrace) {
+        const target = traceTarget(raw, e.shiftKey).point
+        s.switchTraceLayer(target)
+        return
       }
 
       // Orta tuş / sağ tuş / boşluk+sol: pan
@@ -348,7 +386,7 @@ export function CanvasEditor() {
               if (sel.textIds.includes(t.id)) originals.set(t.id, { x: t.x, y: t.y })
             }
             for (const z of s.project.zones) {
-              if (sel.zoneIds.includes(z.id)) originals.set(z.id, { x: z.x, y: z.y })
+              if (sel.zoneIds.includes(z.id)) originals.set(z.id, z.points.map((p) => ({ ...p })))
             }
             for (const im of s.project.images) {
               if (sel.imageIds.includes(im.id)) originals.set(im.id, { x: im.x, y: im.y })
@@ -386,9 +424,9 @@ export function CanvasEditor() {
         }
 
         case 'trace': {
-          const { point, pad } = traceTarget(raw, e.shiftKey)
+          const { point, pad, via } = traceTarget(raw, e.shiftKey)
           if (!s.drawingTrace) {
-            s.startTrace(point, pad?.net ?? '')
+            s.startTrace(point, pad?.net ?? via?.net ?? '')
             if (pad && !pad.net) {
               s.setStatus(tr('İz başladı — bu pad\'e net atanmamış (Net aracıyla atayabilirsiniz)'))
             }
@@ -413,6 +451,10 @@ export function CanvasEditor() {
                 }
               }, tr('İz tamamlandı'))
               store.setState({ drawingTrace: null })
+            } else if (via) {
+              // Var olan via üzerinde: izi ona bağla, via zaten iki katmanı da
+              // bağladığı için otomatik olarak diğer katmanda çizime devam et
+              s.continueTraceFromVia(via, point)
             } else {
               s.addTracePoint(point)
             }
@@ -430,9 +472,14 @@ export function CanvasEditor() {
           break
         }
 
-        case 'zone':
-          dragRef.current = { kind: 'zone', start: snap(raw), current: snap(raw) }
+        case 'zone': {
+          // Serbest çokgen sınır: tıkla tıkla köşe ekle, çift tık ile bitir
+          // (kart dış hattı çiziminin aynısı — bkz. onDoubleClick)
+          const sp = snap(raw)
+          if (!s.drawingZone) s.startZoneDraw(sp)
+          else s.addZonePoint(sp)
           break
+        }
 
         case 'measure': {
           // Ölçüm başlangıcı ızgaraya yaslanır (hassas hizalama)
@@ -533,7 +580,7 @@ export function CanvasEditor() {
         }
         for (const z of p.zones) {
           const o = drag.originals.get(z.id)
-          if (o && !Array.isArray(o)) { z.x = o.x + dx; z.y = o.y + dy }
+          if (o && Array.isArray(o)) z.points = o.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }))
         }
         for (const im of p.images) {
           const o = drag.originals.get(im.id)
@@ -570,7 +617,11 @@ export function CanvasEditor() {
       const drag = dragRef.current
 
       if (drag.kind === 'pan') {
-        setView((v) => ({ ...v, x: v.x + e.movementX, y: v.y + e.movementY }))
+        // Aynalanmış (arkadan) görünümde X ekseni ters çevrilmiş olduğundan
+        // fare hareketi de X'te ters uygulanmalı — aksi halde sürükleme yönü
+        // ekranda tersine hissettirir
+        const dx = viewFlipped ? -e.movementX : e.movementX
+        setView((v) => ({ ...v, x: v.x + dx, y: v.y + e.movementY }))
         return
       }
 
@@ -595,12 +646,8 @@ export function CanvasEditor() {
         setDragTick((t) => t + 1)
         return
       }
-      if (drag.kind === 'zone') {
-        drag.current = snap(raw)
-        setDragTick((t) => t + 1)
-      }
     },
-    [toWorld, store, snap, flushDrag]
+    [toWorld, store, snap, flushDrag, viewFlipped]
   )
 
   const onMouseUp = useCallback(
@@ -686,25 +733,6 @@ export function CanvasEditor() {
         return
       }
 
-      if (drag.kind === 'zone') {
-        const r = normRect(drag.start, drag.current)
-        setDragTick((t) => t + 1)
-        if (r.width < 1 || r.height < 1) return
-        const net = await ask(tr('Bakır alan net adı'), 'GND', tr('Genellikle GND'))
-        if (net === null) return
-        s.commit((p) => {
-          p.zones.push({
-            id: uid('z'),
-            layer: s.activeLayer,
-            x: r.x,
-            y: r.y,
-            width: r.width,
-            height: r.height,
-            net: net.trim(),
-            clearance: p.rules.clearance
-          })
-        }, tr('Bakır alan eklendi ({net})', { net: net.trim() || tr('atanmamış') }))
-      }
     },
     [store, ask, flushDrag]
   )
@@ -788,10 +816,23 @@ export function CanvasEditor() {
   )
 
   const onDoubleClick = useCallback(
-    (e: React.MouseEvent) => {
+    async (e: React.MouseEvent) => {
       const s = store.getState()
       if (s.tool === 'trace' && s.drawingTrace) {
         s.finishTrace()
+        return
+      }
+      if (s.tool === 'zone' && s.drawingZone) {
+        if (s.drawingZone.length < 3) {
+          s.cancelZoneDraw()
+          return
+        }
+        const net = await ask(tr('Bakır alan net adı'), 'GND', tr('Genellikle GND'))
+        if (net === null) {
+          s.cancelZoneDraw()
+          return
+        }
+        s.finishZoneDraw(net)
         return
       }
       if (s.tool === 'board-shape' && s.drawingBoardOutline) {
@@ -836,12 +877,12 @@ export function CanvasEditor() {
         }
       }
     },
-    [store, toWorld, view.scale, tolWorld]
+    [store, toWorld, view.scale, tolWorld, ask]
   )
 
   // ── Klavye kısayolları ──
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
+    const onKeyDown = async (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
       const s = store.getState()
@@ -897,6 +938,7 @@ export function CanvasEditor() {
           if (selectedVertex) { setSelectedVertex(null); break }
           if (s.drawingTrace) s.cancelTrace()
           else if (s.drawingBoardOutline) s.cancelBoardOutline()
+          else if (s.drawingZone) s.cancelZoneDraw()
           else if (s.placingFootprintId) s.startPlacing(null)
           else if (s.placingImage) s.startPlacingImage(null)
           else s.clearSelection()
@@ -904,6 +946,12 @@ export function CanvasEditor() {
         case 'Enter':
           if (s.drawingTrace) s.finishTrace()
           else if (s.drawingBoardOutline) s.finishBoardOutline()
+          else if (s.drawingZone) {
+            if (s.drawingZone.length < 3) { s.cancelZoneDraw(); break }
+            const net = await ask(tr('Bakır alan net adı'), 'GND', tr('Genellikle GND'))
+            if (net === null) s.cancelZoneDraw()
+            else s.finishZoneDraw(net)
+          }
           break
         case 'Delete':
         case 'Backspace':
@@ -979,7 +1027,7 @@ export function CanvasEditor() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [store, mouseWorld, snap, snappedCursor, size, selectedVertex])
+  }, [store, mouseWorld, snap, snappedCursor, size, selectedVertex, ask])
 
   return (
     <div className="canvas-container" ref={containerRef}>

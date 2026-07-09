@@ -2,17 +2,19 @@
 // Yüksek çözünürlüklü kart görseli (dokümantasyon/önizleme) veya tek katman
 // siyah-beyaz üretim çıktısı (toner transfer, film).
 
-import type { CopperLayer, Footprint, Project } from '../types'
+import type { CopperLayer, Footprint, Project, VisibleLayer } from '../types'
 import {
   allDrills,
   copperLayerGeometry,
   silkLayerGeometry,
-  type CopperPrimitive
+  type CopperPrimitive,
+  type RegionItem
 } from './exportGeometry'
 import { rasterizeCopper } from './rasterize'
 import { downloadBlob } from './files'
 import { outlinePoints } from './exportGeometry'
 import { cutoutOutlinePoints } from '../core/boardGeometry'
+import { analyzeNets } from '../core/netlist'
 
 /** Bir data URL görselini <img> olarak yükler (dışa aktarımda çizmek için) */
 function loadImageEl(src: string): Promise<HTMLImageElement | null> {
@@ -62,6 +64,26 @@ function drawPrimitives(
   }
 }
 
+/** Bir zone'un otomatik hesaplanmış dolgu şeklini (dış sınır + delikler) çizer
+ *  — evenodd kuralıyla gerçek delikler (foreign-net boşluk + thermal relief) */
+function drawRegion(ctx: CanvasRenderingContext2D, z: RegionItem, color: string) {
+  ctx.fillStyle = color
+  for (const isl of z.islands) {
+    if (isl.outer.length < 3) continue
+    ctx.beginPath()
+    ctx.moveTo(isl.outer[0].x, isl.outer[0].y)
+    for (const p of isl.outer.slice(1)) ctx.lineTo(p.x, p.y)
+    ctx.closePath()
+    for (const hole of isl.holes) {
+      if (hole.length < 3) continue
+      ctx.moveTo(hole[0].x, hole[0].y)
+      for (const p of hole.slice(1)) ctx.lineTo(p.x, p.y)
+      ctx.closePath()
+    }
+    ctx.fill('evenodd')
+  }
+}
+
 /** Renkli birleşik kart görseli PNG olarak indir */
 export async function exportCompositePng(
   project: Project,
@@ -86,14 +108,22 @@ export async function compositePngBlob(
   const ctx = canvas.getContext('2d')!
   ctx.scale(pxPerMm, pxPerMm)
 
-  // Kart zemini (lehim maskesi rengi)
+  // Kart zemini (lehim maskesi rengi) — iç kesimler (cutout) gerçek delik
+  // olarak boşaltılır (evenodd: dış hat + her kesim aynı path'te alt-yol)
   ctx.fillStyle = project.board.color || '#1a5c2a'
   const outline = outlinePoints(project)
   ctx.beginPath()
   ctx.moveTo(outline[0].x, outline[0].y)
   for (const p of outline.slice(1)) ctx.lineTo(p.x, p.y)
   ctx.closePath()
-  ctx.fill()
+  for (const cut of project.board.cutouts ?? []) {
+    const cp = cutoutOutlinePoints(cut)
+    if (cp.length < 2) continue
+    ctx.moveTo(cp[0].x, cp[0].y)
+    for (const p of cp.slice(1)) ctx.lineTo(p.x, p.y)
+    ctx.closePath()
+  }
+  ctx.fill('evenodd')
 
   const layers: { layer: CopperLayer; color: string; alpha: number }[] = [
     { layer: 'bottom', color: '#3a6fd0', alpha: 0.8 },
@@ -103,23 +133,23 @@ export async function compositePngBlob(
     const geo = copperLayerGeometry(project, getFootprint, layer)
     ctx.globalAlpha = alpha * 0.4
     for (const z of geo.zones) {
-      ctx.fillStyle = color
-      ctx.fillRect(z.x, z.y, z.width, z.height)
+      drawRegion(ctx, z, color)
     }
     ctx.globalAlpha = alpha
     drawPrimitives(ctx, geo.copper, color)
   }
   ctx.globalAlpha = 1
 
-  // Silkscreen
-  drawPrimitives(
-    ctx,
-    silkLayerGeometry(project, getFootprint, 'top'),
-    '#eeeeee'
-  )
+  // Silkscreen (üst + alt — tek katmanlı kartta alt yoktur)
+  drawPrimitives(ctx, silkLayerGeometry(project, getFootprint, 'top'), '#eeeeee')
+  if (project.board.layerCount !== 1) {
+    drawPrimitives(ctx, silkLayerGeometry(project, getFootprint, 'bottom'), '#d8c2f0')
+  }
 
-  // Yerleştirilen görseller (üst silk)
-  for (const im of project.images.filter((i) => i.layer === 'top-silk')) {
+  // Yerleştirilen görseller (üst + alt silk)
+  for (const im of project.images) {
+    if (im.layer !== 'top-silk' && im.layer !== 'bottom-silk') continue
+    if (im.layer === 'bottom-silk' && project.board.layerCount === 1) continue
     const el = await loadImageEl(im.src)
     if (!el) continue
     ctx.save()
@@ -176,8 +206,7 @@ export async function outlineTracesPngBlob(
   const layers: CopperLayer[] = project.board.layerCount === 1 ? ['top'] : ['top', 'bottom']
   for (const layer of layers) {
     const geo = copperLayerGeometry(project, getFootprint, layer)
-    ctx.fillStyle = '#000000'
-    for (const z of geo.zones) ctx.fillRect(z.x, z.y, z.width, z.height)
+    for (const z of geo.zones) drawRegion(ctx, z, '#000000')
     drawPrimitives(ctx, geo.copper, '#000000')
   }
 
@@ -212,6 +241,53 @@ export async function outlineTracesPngBlob(
   }
 
   return new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+}
+
+/** Tek katman silkscreen PNG'sini indir (siyah üstüne beyaz zemin) */
+export async function exportSilkLayerPng(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  side: CopperLayer,
+  opts: { mirror?: boolean; pxPerMm?: number } = {}
+): Promise<void> {
+  const blob = await silkLayerPngBlob(project, getFootprint, side, opts)
+  if (blob) {
+    downloadBlob(`${project.name}-${side === 'top' ? 'ust' : 'alt'}-silk.png`, blob)
+  }
+}
+
+/** Tek katman silkscreen PNG'sini blob olarak döndür */
+export async function silkLayerPngBlob(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  side: CopperLayer,
+  opts: { mirror?: boolean; pxPerMm?: number } = {}
+): Promise<Blob | null> {
+  const pxPerMm = opts.pxPerMm ?? 24
+  const w = Math.ceil(project.board.width * pxPerMm)
+  const h = Math.ceil(project.board.height * pxPerMm)
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, h)
+  ctx.scale(pxPerMm, pxPerMm)
+  drawPrimitives(ctx, silkLayerGeometry(project, getFootprint, side), '#000000')
+
+  let out = canvas
+  if (opts.mirror) {
+    const m = document.createElement('canvas')
+    m.width = canvas.width
+    m.height = canvas.height
+    const mctx = m.getContext('2d')!
+    mctx.translate(canvas.width, 0)
+    mctx.scale(-1, 1)
+    mctx.drawImage(canvas, 0, 0)
+    out = m
+  }
+
+  return new Promise<Blob | null>((r) => out.toBlob(r, 'image/png'))
 }
 
 /** Tek katman siyah-beyaz üretim PNG'si (toner transfer için aynalanabilir) */
@@ -268,4 +344,110 @@ export async function layerPngBlob(
   }
 
   return new Promise<Blob | null>((r) => out.toBlob(r, 'image/png'))
+}
+
+/**
+ * Özel dışa aktarım: kullanıcının seçtiği katmanlar (Katmanlar panelindeki
+ * aynı 8 katman) hangi kombinasyonda seçilirse seçilsin TEK bir PNG'de
+ * birleştirilir. Varsayılan olarak her katman ayrı renkle çizilir ki üst üste
+ * bindiklerinde ayırt edilebilsin; `blackWhite` açıksa tüm renkler zorla
+ * siyaha çevrilir (bkz. svg.ts svgCustomExport — aynı renk şeması).
+ */
+export async function customExportPngBlob(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  layers: Record<VisibleLayer, boolean>,
+  blackWhite = true,
+  pxPerMm = 20
+): Promise<Blob | null> {
+  const w = Math.ceil(project.board.width * pxPerMm)
+  const h = Math.ceil(project.board.height * pxPerMm)
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, h)
+  ctx.scale(pxPerMm, pxPerMm)
+  const K = '#000000'
+
+  const copperSides: { side: CopperLayer; on: boolean; color: string; zoneColor: string }[] = [
+    { side: 'bottom', on: layers.bottom, color: blackWhite ? K : '#9a9a9a', zoneColor: blackWhite ? K : '#4a7fdb' },
+    { side: 'top', on: layers.top, color: K, zoneColor: blackWhite ? K : '#d0402f' }
+  ]
+  for (const { side, on, color, zoneColor } of copperSides) {
+    if (!on && !layers.zones) continue
+    const geo = copperLayerGeometry(project, getFootprint, side)
+    if (layers.zones) {
+      ctx.globalAlpha = 0.55
+      for (const z of geo.zones) drawRegion(ctx, z, zoneColor)
+      ctx.globalAlpha = 1
+    }
+    if (on) drawPrimitives(ctx, geo.copper, color)
+  }
+
+  if (layers['top-silk']) drawPrimitives(ctx, silkLayerGeometry(project, getFootprint, 'top'), blackWhite ? K : '#1c4e9c')
+  if (layers['bottom-silk']) drawPrimitives(ctx, silkLayerGeometry(project, getFootprint, 'bottom'), blackWhite ? K : '#7a3fa0')
+
+  if (layers.outline) {
+    const strokeW = project.board.outlineWidth ?? 0.3
+    ctx.strokeStyle = '#000000'
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = strokeW
+    const outline = outlinePoints(project)
+    ctx.beginPath()
+    ctx.moveTo(outline[0].x, outline[0].y)
+    for (const p of outline.slice(1)) ctx.lineTo(p.x, p.y)
+    ctx.closePath()
+    ctx.stroke()
+    for (const cut of project.board.cutouts ?? []) {
+      const cp = cutoutOutlinePoints(cut)
+      if (cp.length < 2) continue
+      ctx.beginPath()
+      ctx.moveTo(cp[0].x, cp[0].y)
+      for (const p of cp.slice(1)) ctx.lineTo(p.x, p.y)
+      ctx.closePath()
+      ctx.stroke()
+    }
+  }
+
+  if (layers.drill) {
+    const strokeW = (project.board.outlineWidth ?? 0.3) * 0.5
+    for (const dr of allDrills(project, getFootprint)) {
+      ctx.beginPath()
+      ctx.arc(dr.x, dr.y, dr.diameter / 2, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.fill()
+      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = strokeW
+      ctx.stroke()
+    }
+  }
+
+  if (layers.ratsnest) {
+    const { airwires } = analyzeNets(project, getFootprint)
+    ctx.strokeStyle = blackWhite ? K : '#e8d44d'
+    ctx.lineWidth = 0.15
+    ctx.setLineDash([0.8, 0.6])
+    for (const aw of airwires) {
+      ctx.beginPath()
+      ctx.moveTo(aw.x1, aw.y1)
+      ctx.lineTo(aw.x2, aw.y2)
+      ctx.stroke()
+    }
+    ctx.setLineDash([])
+  }
+
+  return new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+}
+
+/** Özel dışa aktarım PNG'sini indir */
+export async function exportCustomPng(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  layers: Record<VisibleLayer, boolean>,
+  blackWhite = true
+): Promise<void> {
+  const blob = await customExportPngBlob(project, getFootprint, layers, blackWhite)
+  if (blob) downloadBlob(`${project.name}-ozel.png`, blob)
 }

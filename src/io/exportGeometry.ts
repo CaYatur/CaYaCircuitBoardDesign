@@ -3,10 +3,11 @@
 // bazlı geometri ilkelleri (stroke / flash / region).
 
 import type { CopperLayer, Footprint, Point, Project } from '../types'
-import { localToWorld, padWorldPos, padWorldSize } from '../core/geometry'
+import { localToWorld, padWorldPos, padWorldSize, transformArcAngles } from '../core/geometry'
 import { polygonOutlinePoints } from '../core/boardGeometry'
 import { placeText } from '../render/vectorFont'
 import { pinSilkLabels } from '../core/pinSilk'
+import { computeZoneFill, type ZoneFillIsland } from '../core/zoneFill'
 
 export interface StrokeItem {
   kind: 'stroke'
@@ -23,33 +24,32 @@ export interface FlashItem {
   width: number
   height: number
   net: string
+  /** Delikli (THT pad/via) mı — ısı yalıtım (thermal relief) köprüsü yalnız bunlara uygulanır */
+  tht?: boolean
 }
 
+/** Bir zone'un otomatik hesaplanmış gerçek dolgu şekli (dış sınır + delikler) */
 export interface RegionItem {
   kind: 'region'
-  x: number
-  y: number
-  width: number
-  height: number
   net: string
-  clearance: number
+  islands: ZoneFillIsland[]
 }
 
 export type CopperPrimitive = StrokeItem | FlashItem
 
 export interface CopperLayerGeometry {
-  /** Bakır dolgu alanları (önce çizilir, diğer netlerin çevresi boşaltılır) */
+  /** Bakır dolgu alanları (otomatik hesaplanmış gerçek şekil — bkz. core/zoneFill.ts) */
   zones: RegionItem[]
   /** İzler, pad'ler, vialar */
   copper: CopperPrimitive[]
 }
 
-/** Bir bakır katmandaki tüm ilkelleri toplar */
-export function copperLayerGeometry(
+/** Zone HARİÇ bir bakır katmandaki tüm ilkelleri toplar (zone dolgusu bunlara göre hesaplanır) */
+export function rawCopperItems(
   project: Project,
   getFootprint: (id: string) => Footprint | undefined,
   layer: CopperLayer
-): CopperLayerGeometry {
+): CopperPrimitive[] {
   const copper: CopperPrimitive[] = []
 
   for (const trace of project.traces) {
@@ -83,7 +83,8 @@ export function copperLayerGeometry(
         y: pos.y,
         width,
         height,
-        net: comp.padNets[pad.name] ?? ''
+        net: comp.padNets[pad.name] ?? '',
+        tht: isTht
       })
     }
   }
@@ -96,22 +97,28 @@ export function copperLayerGeometry(
       y: via.y,
       width: via.diameter,
       height: via.diameter,
-      net: via.net
+      net: via.net,
+      tht: true
     })
   }
 
+  return copper
+}
+
+/** Bir bakır katmandaki tüm ilkelleri (zone dolguları dahil) toplar */
+export function copperLayerGeometry(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  layer: CopperLayer
+): CopperLayerGeometry {
+  const copper = rawCopperItems(project, getFootprint, layer)
   const zones: RegionItem[] = project.zones
     .filter((z) => z.layer === layer)
     .map((z) => ({
       kind: 'region',
-      x: z.x,
-      y: z.y,
-      width: z.width,
-      height: z.height,
       net: z.net,
-      clearance: z.clearance
+      islands: computeZoneFill(z, copper).islands
     }))
-
   return { zones, copper }
 }
 
@@ -185,6 +192,19 @@ export function silkLayerGeometry(
     return pts
   }
 
+  const arcPoints = (cx: number, cy: number, r: number, a0: number, a1: number): Point[] => {
+    const TAU = Math.PI * 2
+    let span = (a1 - a0) % TAU
+    if (span < 0) span += TAU
+    const segs = Math.max(2, Math.round((span / TAU) * 48))
+    const pts: Point[] = []
+    for (let i = 0; i <= segs; i++) {
+      const a = a0 + (span * i) / segs
+      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) })
+    }
+    return pts
+  }
+
   for (const comp of project.components) {
     if (comp.side !== side) continue
     const fp = getFootprint(comp.footprintId)
@@ -217,6 +237,15 @@ export function silkLayerGeometry(
         strokes.push({
           kind: 'stroke',
           points: circlePoints(c.x, c.y, el.r),
+          width: el.width,
+          net: ''
+        })
+      } else if (el.kind === 'arc') {
+        const c = localToWorld(comp, { x: el.cx, y: el.cy })
+        const [wa0, wa1] = transformArcAngles(el.a0, el.a1, comp)
+        strokes.push({
+          kind: 'stroke',
+          points: arcPoints(c.x, c.y, el.r, wa0, wa1),
           width: el.width,
           net: ''
         })

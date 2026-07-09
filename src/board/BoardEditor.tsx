@@ -198,7 +198,18 @@ export function BoardEditor() {
       ctx.fillStyle = C.board
       ctx.fill()
 
-      // Kesimler — zemin rengiyle boşalt
+      // Kesimler — zemin rengiyle boşalt; kart dış hattına kliplenir ki kesim
+      // kenarı taşarsa dolgu/çizgi kartın dışına "çerçeve" gibi sarkmasın
+      ctx.save()
+      ctx.beginPath()
+      const clip0 = W(filled[0])
+      ctx.moveTo(clip0.x, clip0.y)
+      for (const p of filled.slice(1)) {
+        const sp = W(p)
+        ctx.lineTo(sp.x, sp.y)
+      }
+      ctx.closePath()
+      ctx.clip()
       for (const cut of board.cutouts ?? []) {
         const cp = cutoutOutlinePoints(cut)
         ctx.beginPath()
@@ -215,6 +226,7 @@ export function BoardEditor() {
         ctx.lineWidth = selCutout === cut.id ? 2 : 1.4
         ctx.stroke()
       }
+      ctx.restore()
 
       // Dış hat çizgisi
       ctx.beginPath()

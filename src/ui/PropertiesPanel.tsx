@@ -287,9 +287,28 @@ export function PropertiesPanel() {
               })
             }
           />
+          <div className="field field-checkbox">
+            <label>{t('Isı yalıtım köprüsü (thermal relief)')}</label>
+            <input
+              type="checkbox"
+              checked={zone.thermalRelief !== false}
+              onChange={(e) =>
+                commit((p) => {
+                  const x = p.zones.find((q) => q.id === zone.id)
+                  if (x) x.thermalRelief = e.target.checked
+                })
+              }
+            />
+          </div>
           <div className="props-info">
-            {zone.width.toFixed(1)} × {zone.height.toFixed(1)} mm —{' '}
-            {zone.layer === 'top' ? t('üst') : t('alt')} {t('katman')}
+            {(() => {
+              const xs = zone.points.map((p) => p.x)
+              const ys = zone.points.map((p) => p.y)
+              const w = Math.max(...xs) - Math.min(...xs)
+              const h = Math.max(...ys) - Math.min(...ys)
+              return `${w.toFixed(1)} × ${h.toFixed(1)} mm`
+            })()}{' '}
+            — {zone.layer === 'top' ? t('üst') : t('alt')} {t('katman')}
           </div>
         </div>
       )}

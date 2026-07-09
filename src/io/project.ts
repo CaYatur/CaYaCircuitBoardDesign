@@ -53,6 +53,29 @@ export async function openProjectFile(
   return { project: validateProject(JSON.parse(file.content)), path: null }
 }
 
+/**
+ * Eski sürümdeki dikdörtgen zone'ları (x/y/width/height) yeni serbest çokgen
+ * biçimine (points) göçürür — v1.4 öncesi kaydedilmiş projeler için geriye
+ * dönük uyumluluk.
+ */
+function migrateZone(z: any): any {
+  if (Array.isArray(z.points)) return z
+  const x = Number(z.x) || 0
+  const y = Number(z.y) || 0
+  const w = Number(z.width) || 0
+  const h = Number(z.height) || 0
+  const { x: _x, y: _y, width: _w, height: _h, ...rest } = z
+  return {
+    ...rest,
+    points: [
+      { x, y },
+      { x: x + w, y },
+      { x: x + w, y: y + h },
+      { x, y: y + h }
+    ]
+  }
+}
+
 /** Eksik alanları varsayılanlarla tamamlayarak projeyi doğrula */
 export function validateProject(raw: any): Project {
   if (!raw || typeof raw !== 'object' || !raw.board) {
@@ -70,7 +93,7 @@ export function validateProject(raw: any): Project {
     traces: Array.isArray(raw.traces) ? raw.traces : [],
     vias: Array.isArray(raw.vias) ? raw.vias : [],
     texts: Array.isArray(raw.texts) ? raw.texts : [],
-    zones: Array.isArray(raw.zones) ? raw.zones : [],
+    zones: Array.isArray(raw.zones) ? raw.zones.map(migrateZone) : [],
     images: Array.isArray(raw.images) ? raw.images : [],
     models3d: Array.isArray(raw.models3d) ? raw.models3d : [],
     customFootprints: Array.isArray(raw.customFootprints) ? raw.customFootprints : [],

@@ -176,7 +176,8 @@ const en: Record<string, string> = {
     'Trace — click a pad to start, V: switch layer via a via, double-click/Enter: finish',
   'Via — eklemek için tıklayın': 'Via — click to place',
   'Yazı — eklemek için tıklayın': 'Text — click to place',
-  'Bakır alan — köşeden köşeye sürükleyin': 'Copper zone — drag corner to corner',
+  'Bakır alan — köşe köşe tıklayın, çift tık/Enter ile bitirin (Esc: iptal)':
+    'Copper zone — click corner by corner, finish with double-click/Enter (Esc: cancel)',
   'Ölçüm — sürükleyin; Shift: 45° kilidi. Ölçüm sonrası seçimi bu vektörle taşıyabilirsiniz':
     'Measure — drag; Shift: 45° lock. Afterwards you can move the selection by the measured vector',
   'Net atama — pad\'e tıklayarak net adı verin': 'Assign net — click a pad to name its net',
@@ -204,6 +205,7 @@ const en: Record<string, string> = {
     'Trace started — this pad has no net (assign one with the Net tool)',
   'Via eklendi': 'Via placed',
   'Via eklendi — {layer} katmanda devam': 'Via placed — continuing on {layer} layer',
+  'Via\'ya bağlandı — {layer} katmanda devam': 'Connected to via — continuing on {layer} layer',
   'Yazı eklendi': 'Text added',
   'Net atandı: {net}': 'Net assigned: {net}',
   'Net kaldırıldı': 'Net removed',
@@ -261,6 +263,9 @@ const en: Record<string, string> = {
   'Aktif çizim katmanı yap': 'Make active drawing layer',
   '(tek katman)': '(single layer)',
   '(çift katman)': '(double layer)',
+  'Kartı arkadan görüntüle (sol-sağ aynalanmış görünüm)': 'View the board from behind (mirrored left-right)',
+  'Alttan Gör': 'View from bottom',
+  'Alttan görünüyor': 'Viewing from bottom',
 
   // ── Kütüphane ──
   'Komponent Kütüphanesi': 'Component Library',
@@ -570,6 +575,16 @@ const en: Record<string, string> = {
   'SVG / Lazer': 'SVG / Laser',
   'PNG / Görsel': 'PNG / Image',
   'BOM / Proje': 'BOM / Project',
+  'Özel Seçim': 'Custom Selection',
+  'İstediğiniz katmanları seçip TEK bir dosyada birleştirerek dışa aktarın (SVG veya PNG).':
+    'Pick any layers you want and export them combined into a SINGLE file (SVG or PNG).',
+  'Hepsini Seç': 'Select All',
+  'Hiçbirini Seçme': 'Select None',
+  'Özel dışa aktarım SVG': 'Custom export SVG',
+  'Özel dışa aktarım PNG': 'Custom export PNG',
+  'SVG olarak indir': 'Download as SVG',
+  'PNG olarak indir': 'Download as PNG',
+  'Siyah-beyaz (tüm katmanları siyaha zorla)': 'Black & white (force all layers to black)',
   'PCB üreticilerine (JLCPCB, PCBWay vb.) gönderilecek standart üretim dosyaları: üst/alt bakır, üst/alt silkscreen, kart sınırı ve Excellon delik dosyası.':
     'Standard fabrication files for PCB manufacturers (JLCPCB, PCBWay etc.): top/bottom copper, top/bottom silkscreen, board outline and Excellon drill file.',
   'Gerber seti (6 dosya)': 'Gerber set (6 files)',
@@ -585,6 +600,9 @@ const en: Record<string, string> = {
   'Üst bakır SVG': 'Top copper SVG',
   'Alt bakır SVG': 'Bottom copper SVG',
   'Üst silkscreen SVG': 'Top silkscreen SVG',
+  'Alt silkscreen SVG': 'Bottom silkscreen SVG',
+  'Üst silkscreen PNG': 'Top silkscreen PNG',
+  'Alt silkscreen PNG': 'Bottom silkscreen PNG',
   'Kesim hattı SVG': 'Cut outline SVG',
   'Kesim hattı — lazer': 'Cut outline — laser',
   'Birleşik görünüm SVG': 'Composite view SVG',
@@ -1012,6 +1030,11 @@ const en: Record<string, string> = {
   'Çizgi çiz (sürükle)': 'Draw line (drag)',
   'Dikdörtgen çiz (sürükle)': 'Draw rectangle (drag)',
   'Daire çiz (merkezden sürükle)': 'Draw circle (drag from center)',
+  'Yay': 'Arc',
+  'Yay çiz — merkeze tıkla, yarıçap için tıkla, bitiş açısı için tıkla':
+    'Draw arc — click center, click for radius, click for end angle',
+  'Başlangıç°': 'Start°',
+  'Bitiş°': 'End°',
   'Yazı ekle': 'Add text',
   'Çizim öğesi sil': 'Delete drawing element',
   'Otomatik sembole (kutu/standart glif) geri dön': 'Return to automatic symbol (box/standard glyph)',
@@ -1028,6 +1051,8 @@ const en: Record<string, string> = {
   'Silindir': 'Cylinder',
   'Model seç': 'Choose model',
   'Dönüş': 'Rotation',
+  'Model Üstüne Yazı Ekle': 'Add Text to Model',
+  'Yazıyı sil': 'Delete text',
   '3B görünümde kategoriye göre otomatik basit gövde üretilir. Basit şekil veya OBJ/STL model atayabilirsiniz.':
     'The 3D view generates an automatic simple body by category. You can assign a simple shape or an OBJ/STL model.',
   'Sürükle: döndür · Tekerlek: yakınlaştır. Model kaydedilen footprint ile birlikte saklanır ve 3B görünümde kullanılır.':

@@ -51,6 +51,18 @@ export interface SilkCircle {
   width: number
 }
 
+/** Yay (örn. kondansatör polarite işareti gibi kıvrık silk çizimleri) */
+export interface SilkArc {
+  kind: 'arc'
+  cx: number
+  cy: number
+  r: number
+  /** Başlangıç/bitiş açısı (radyan) — canvas arc yönünde a0'dan a1'e sarar */
+  a0: number
+  a1: number
+  width: number
+}
+
 export interface SilkText {
   kind: 'text'
   x: number
@@ -59,7 +71,7 @@ export interface SilkText {
   size: number
 }
 
-export type SilkElement = SilkLine | SilkCircle | SilkText
+export type SilkElement = SilkLine | SilkCircle | SilkArc | SilkText
 
 // ─── Özel şema sembolü (footprint başına) ─────────────────────────────────
 
@@ -120,6 +132,23 @@ export interface FootprintModel3D {
   z?: number
   /** mesh: kaynak dosya adı */
   name?: string
+  /** Modelin üstüne "yazılmış" düz (2B) metin etiketleri — footprint-yerel
+   *  konum, kart/komponent yüzüne göre otomatik döner/aynalanır */
+  labels?: FootprintModelLabel[]
+}
+
+export interface FootprintModelLabel {
+  text: string
+  /** Footprint-yerel konum (mm) — pad/silk ile aynı çerçevede */
+  x: number
+  y: number
+  /** Kart yüzeyinden yükseklik ofseti (mm) — model üstüne oturması için */
+  z?: number
+  /** Yazı yüksekliği (mm) */
+  size?: number
+  color?: string
+  /** Etiketin kendi ekseni etrafındaki dönüşü (derece) */
+  rotZ?: number
 }
 
 export interface Footprint {
@@ -262,17 +291,23 @@ export interface Model3D {
   visible: boolean
 }
 
-/** Bakır dolgu alanı (basit dikdörtgen zone) */
+/**
+ * Bakır dolgu alanı (copper pour/zone). Sınır serbest bir çokgendir; gerçek
+ * dolgu şekli (`core/zoneFill.ts computeZoneFill`) bu sınırdan otomatik
+ * üretilir: farklı netteki pad/via/iz'lerin çevresi `clearance` kadar
+ * boşaltılır, aynı netteki THT pad/via'lara ısı yalıtım (thermal relief)
+ * köprüleri eklenir.
+ */
 export interface CopperZone {
   id: string
   layer: CopperLayer
-  x: number
-  y: number
-  width: number
-  height: number
+  /** Serbest çokgen sınır (kart-yerel mm) */
+  points: Point[]
   net: string
   /** Diğer netlere olan boşluk */
   clearance: number
+  /** THT pad/via'larda ısı yalıtım köprüsü (varsayılan açık) */
+  thermalRelief?: boolean
 }
 
 // ─── Kart ve proje ────────────────────────────────────────────────────────

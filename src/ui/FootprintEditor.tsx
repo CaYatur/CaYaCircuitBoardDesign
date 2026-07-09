@@ -12,6 +12,7 @@ import { useUserLibrary } from '../state/userLibrary'
 import type {
   Footprint,
   FootprintModel3D,
+  FootprintModelLabel,
   PadDef,
   Point,
   SilkElement,
@@ -694,7 +695,7 @@ function labelPos(pad: PadDef): Point {
   return { x: (pad.x) + (pad.nameDx ?? (d.x - pad.x)), y: pad.y + (pad.nameDy ?? (d.y - pad.y)) }
 }
 
-type FpTool = 'move' | 'pad' | 'outline' | 'line' | 'circle' | 'text' | 'delete'
+type FpTool = 'move' | 'pad' | 'outline' | 'line' | 'circle' | 'arc' | 'text' | 'delete'
 
 /**
  * Kılıf (PCB) tuvali — kart editörü benzeri: pan/zoom, ızgara, pad taşıma/ekleme,
@@ -730,6 +731,10 @@ function FpCanvas({
   const [snap, setSnap] = useState(true)
   const [draft, setDraft] = useState<Point[] | null>(null)
   const [shapeDraft, setShapeDraft] = useState<{ a: Point; b: Point } | null>(null)
+  // Yay çizim taslağı: merkez → yarıçap/başlangıç açısı → bitiş açısı (3 tık)
+  const [arcDraft, setArcDraft] = useState<
+    { cx: number; cy: number; r: number | null; a0: number | null; cursor: Point } | null
+  >(null)
   const [hover, setHover] = useState<Point | null>(null)
   // Seçili öğe (taşı aracında tıklayınca) — Del ile silinir, altta düzenlenir
   const [sel, setSel] = useState<{ kind: 'pad' | 'silk' | 'vertex'; index: number } | null>(null)
@@ -752,6 +757,7 @@ function FpCanvas({
         setDraft(null)
         setHover(null)
         setShapeDraft(null)
+        setArcDraft(null)
         setSel(null)
         setTool('move')
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) {
@@ -785,7 +791,7 @@ function FpCanvas({
     for (const p of draft ?? []) consider(p.x, p.y)
     for (const e of silk) {
       if (e.kind === 'line') { consider(e.x1, e.y1); consider(e.x2, e.y2) }
-      else if (e.kind === 'circle') { consider(e.cx + e.r, e.cy + e.r); consider(e.cx - e.r, e.cy - e.r) }
+      else if (e.kind === 'circle' || e.kind === 'arc') { consider(e.cx + e.r, e.cy + e.r); consider(e.cx - e.r, e.cy - e.r) }
       else consider(e.x, e.y)
     }
     return { maxX: maxX + 2, maxY: maxY + 2 }
@@ -900,6 +906,9 @@ function FpCanvas({
       } else if (e.kind === 'circle') {
         ctx.lineWidth = Math.max(e.width, 1.2 / vw.scale)
         ctx.beginPath(); ctx.arc(e.cx, e.cy, e.r, 0, Math.PI * 2); ctx.stroke()
+      } else if (e.kind === 'arc') {
+        ctx.lineWidth = Math.max(e.width, 1.2 / vw.scale)
+        ctx.beginPath(); ctx.arc(e.cx, e.cy, e.r, e.a0, e.a1); ctx.stroke()
       } else {
         ctx.font = `${e.size}px sans-serif`
         ctx.textAlign = 'center'
@@ -935,6 +944,34 @@ function FpCanvas({
         ctx.arc(shapeDraft.a.x, shapeDraft.a.y, Math.max(r, 0.01), 0, Math.PI * 2)
       }
       ctx.stroke()
+    }
+
+    // Yay taslağı (3 tıklık akış: merkez → yarıçap/başlangıç → bitiş)
+    if (arcDraft) {
+      ctx.strokeStyle = '#ffd166'
+      ctx.lineWidth = 1.2 / vw.scale
+      const m = 4 / vw.scale
+      ctx.beginPath()
+      ctx.moveTo(arcDraft.cx - m, arcDraft.cy)
+      ctx.lineTo(arcDraft.cx + m, arcDraft.cy)
+      ctx.moveTo(arcDraft.cx, arcDraft.cy - m)
+      ctx.lineTo(arcDraft.cx, arcDraft.cy + m)
+      ctx.stroke()
+      if (arcDraft.r === null) {
+        const liveR = Math.hypot(arcDraft.cursor.x - arcDraft.cx, arcDraft.cursor.y - arcDraft.cy)
+        ctx.setLineDash([3 / vw.scale, 3 / vw.scale])
+        ctx.beginPath(); ctx.arc(arcDraft.cx, arcDraft.cy, liveR, 0, Math.PI * 2); ctx.stroke()
+        ctx.setLineDash([])
+      } else {
+        const curA = Math.atan2(arcDraft.cursor.y - arcDraft.cy, arcDraft.cursor.x - arcDraft.cx)
+        ctx.setLineDash([3 / vw.scale, 3 / vw.scale])
+        ctx.beginPath(); ctx.arc(arcDraft.cx, arcDraft.cy, arcDraft.r, 0, Math.PI * 2); ctx.stroke()
+        ctx.setLineDash([])
+        if (arcDraft.a0 !== null) {
+          ctx.lineWidth = 2 / vw.scale
+          ctx.beginPath(); ctx.arc(arcDraft.cx, arcDraft.cy, arcDraft.r, arcDraft.a0, curA); ctx.stroke()
+        }
+      }
     }
 
     // Pad'ler
@@ -1003,6 +1040,8 @@ function FpCanvas({
           ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); ctx.stroke()
         } else if (e.kind === 'circle') {
           ctx.beginPath(); ctx.arc(e.cx, e.cy, e.r + 0.3, 0, Math.PI * 2); ctx.stroke()
+        } else if (e.kind === 'arc') {
+          ctx.beginPath(); ctx.arc(e.cx, e.cy, e.r + 0.3, e.a0, e.a1); ctx.stroke()
         } else {
           const w = Math.max(1, e.text.length * e.size * 0.35)
           ctx.strokeRect(e.x - w, e.y - e.size, w * 2, e.size * 2)
@@ -1039,6 +1078,12 @@ function FpCanvas({
       } else if (e.kind === 'circle') {
         const d = Math.hypot(loc.x - e.cx, loc.y - e.cy)
         if (Math.abs(d - e.r) <= tol + e.width) return i
+      } else if (e.kind === 'arc') {
+        const d = Math.hypot(loc.x - e.cx, loc.y - e.cy)
+        if (Math.abs(d - e.r) <= tol + e.width) {
+          const ang = Math.atan2(loc.y - e.cy, loc.x - e.cx)
+          if (angleInArc(ang, e.a0, e.a1)) return i
+        }
       } else {
         const w = Math.max(1, e.text.length * e.size * 0.32)
         if (Math.abs(loc.x - e.x) <= w && Math.abs(loc.y - e.y) <= e.size) return i
@@ -1072,6 +1117,26 @@ function FpCanvas({
       case 'line':
       case 'circle': {
         setShapeDraft({ a: sp, b: sp })
+        return
+      }
+      case 'arc': {
+        if (!arcDraft) {
+          setArcDraft({ cx: sp.x, cy: sp.y, r: null, a0: null, cursor: sp })
+        } else if (arcDraft.r === null) {
+          const r = Math.hypot(loc.x - arcDraft.cx, loc.y - arcDraft.cy)
+          if (r < 0.3) return
+          const a0 = Math.atan2(loc.y - arcDraft.cy, loc.x - arcDraft.cx)
+          setArcDraft({ ...arcDraft, r, a0, cursor: loc })
+        } else if (arcDraft.a0 !== null) {
+          const a0 = arcDraft.a0
+          const r = arcDraft.r
+          const a1 = Math.atan2(loc.y - arcDraft.cy, loc.x - arcDraft.cx)
+          setSilk((s) => [
+            ...s,
+            { kind: 'arc', cx: arcDraft.cx, cy: arcDraft.cy, r: +r.toFixed(3), a0, a1, width: 0.2 }
+          ])
+          setArcDraft(null)
+        }
         return
       }
       case 'text': {
@@ -1165,6 +1230,10 @@ function FpCanvas({
       setShapeDraft({ a: shapeDraft.a, b: snapLocal(loc) })
       return
     }
+    if (arcDraft) {
+      setArcDraft({ ...arcDraft, cursor: loc })
+      return
+    }
     const drag = dragRef.current
     if (!drag) return
     if (drag.kind === 'pan') {
@@ -1192,7 +1261,7 @@ function FpCanvas({
           if (o.kind === 'line') {
             return { ...o, x1: +(o.x1 + dx).toFixed(3), y1: +(o.y1 + dy).toFixed(3), x2: +(o.x2 + dx).toFixed(3), y2: +(o.y2 + dy).toFixed(3) }
           }
-          if (o.kind === 'circle') {
+          if (o.kind === 'circle' || o.kind === 'arc') {
             return { ...o, cx: +(o.cx + dx).toFixed(3), cy: +(o.cy + dy).toFixed(3) }
           }
           return { ...o, x: +(o.x + dx).toFixed(3), y: +(o.y + dy).toFixed(3) }
@@ -1231,6 +1300,7 @@ function FpCanvas({
       onClick={() => {
         setTool(id)
         setShapeDraft(null)
+        setArcDraft(null)
         if (id !== 'outline') { setDraft(null); setHover(null) }
         else setDraft([])
       }}
@@ -1247,6 +1317,7 @@ function FpCanvas({
         {toolBtn('pad', '◉', t('Pad'), t('Tıklayarak pad ekle'))}
         {toolBtn('line', '╱', t('Çizgi'), t('Silkscreen çizgi çiz (sürükle)'))}
         {toolBtn('circle', '◯', t('Daire'), t('Silkscreen daire çiz (merkezden sürükle)'))}
+        {toolBtn('arc', '◜', t('Yay'), t('Yay çiz — merkeze tıkla, yarıçap için tıkla, bitiş açısı için tıkla'))}
         {toolBtn('text', 'A', t('Yazı'), t('Silkscreen yazı ekle'))}
         {toolBtn('outline', '✎', t('Dış hat'), t('Gövde dış hattını köşe köşe çiz — çift tık ile bitir'))}
         {toolBtn('delete', '✕', t('Sil'), t('Pad / silk öğesi / köşe sil'))}
@@ -1290,7 +1361,7 @@ function FpCanvas({
           width: W,
           height: H,
           cursor:
-            tool === 'outline' || tool === 'line' || tool === 'circle' || tool === 'pad'
+            tool === 'outline' || tool === 'line' || tool === 'circle' || tool === 'arc' || tool === 'pad'
               ? 'crosshair'
               : tool === 'delete'
                 ? 'not-allowed'
@@ -1354,6 +1425,19 @@ function FpCanvas({
               </div>
             )
           }
+          if (e0.kind === 'arc') {
+            const deg = (r: number) => Math.round((r * 180) / Math.PI)
+            const rad = (d: number) => (d * Math.PI) / 180
+            return (
+              <div className="fp-props">
+                <b>◜ {t('Yay')}</b>
+                <label>R<input type="number" step={0.1} min={0.1} value={e0.r} onChange={(e) => up({ ...e0, r: Math.max(0.1, parseFloat(e.target.value) || 1) })} /></label>
+                <label>{t('Başlangıç°')}<input type="number" step={5} value={deg(e0.a0)} onChange={(e) => up({ ...e0, a0: rad(parseFloat(e.target.value) || 0) })} /></label>
+                <label>{t('Bitiş°')}<input type="number" step={5} value={deg(e0.a1)} onChange={(e) => up({ ...e0, a1: rad(parseFloat(e.target.value) || 0) })} /></label>
+                <label>{t('Kalınlık')}<input type="number" step={0.05} min={0.05} value={e0.width} onChange={(e) => up({ ...e0, width: Math.max(0.05, parseFloat(e.target.value) || 0.2) })} /></label>
+              </div>
+            )
+          }
           return (
             <div className="fp-props">
               <b>A {t('Yazı')}</b>
@@ -1375,7 +1459,20 @@ function FpCanvas({
 
 // ─── Şema sembolü tasarım tuvali ──────────────────────────────────────────
 
-type SymTool = 'move' | 'line' | 'rect' | 'circle' | 'text' | 'delete'
+type SymTool = 'move' | 'line' | 'rect' | 'circle' | 'arc' | 'text' | 'delete'
+
+/** Açının (radyan) [a0,a1] yayı içinde olup olmadığını sarmalamayı da
+ *  dikkate alarak kontrol eder (canvas arc saat yönünde a0→a1 tarar) */
+function angleInArc(ang: number, a0: number, a1: number): boolean {
+  const TAU = Math.PI * 2
+  const norm = (x: number) => ((x % TAU) + TAU) % TAU
+  const a = norm(ang)
+  const s = norm(a0)
+  const e = norm(a1)
+  const pad = 0.05
+  if (s <= e) return a >= s - pad && a <= e + pad
+  return a >= s - pad || a <= e + pad
+}
 
 function SymbolCanvas({
   pads,
@@ -1399,6 +1496,10 @@ function SymbolCanvas({
   const H = 360
   const [tool, setTool] = useState<SymTool>('move')
   const [shapeDraft, setShapeDraft] = useState<{ a: Point; b: Point } | null>(null)
+  // Yay çizim taslağı: merkez → yarıçap/başlangıç açısı → bitiş açısı (3 tık)
+  const [arcDraft, setArcDraft] = useState<
+    { cx: number; cy: number; r: number | null; a0: number | null; cursor: Point } | null
+  >(null)
   // Seçili öğe — Del ile silinir (pinler hariç), altta düzenlenir
   const [sel, setSel] = useState<{ kind: 'pin' | 'prim'; index: number } | null>(null)
   const dragRef = useRef<
@@ -1414,6 +1515,7 @@ function SymbolCanvas({
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tgt.tagName)) return
       if (e.key === 'Escape') {
         setShapeDraft(null)
+        setArcDraft(null)
         setSel(null)
         setTool('move')
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && sel && symbolDef) {
@@ -1599,6 +1701,39 @@ function SymbolCanvas({
       ctx.stroke()
     }
 
+    // Yay taslağı (3 tıklık akış: merkez → yarıçap/başlangıç → bitiş)
+    if (arcDraft) {
+      ctx.strokeStyle = '#ffd166'
+      ctx.lineWidth = px(1.2)
+      ctx.beginPath()
+      ctx.moveTo(arcDraft.cx - px(4), arcDraft.cy)
+      ctx.lineTo(arcDraft.cx + px(4), arcDraft.cy)
+      ctx.moveTo(arcDraft.cx, arcDraft.cy - px(4))
+      ctx.lineTo(arcDraft.cx, arcDraft.cy + px(4))
+      ctx.stroke()
+      if (arcDraft.r === null) {
+        const liveR = Math.hypot(arcDraft.cursor.x - arcDraft.cx, arcDraft.cursor.y - arcDraft.cy)
+        ctx.setLineDash([px(3), px(3)])
+        ctx.beginPath()
+        ctx.arc(arcDraft.cx, arcDraft.cy, liveR, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.setLineDash([])
+      } else {
+        const curA = Math.atan2(arcDraft.cursor.y - arcDraft.cy, arcDraft.cursor.x - arcDraft.cx)
+        ctx.setLineDash([px(3), px(3)])
+        ctx.beginPath()
+        ctx.arc(arcDraft.cx, arcDraft.cy, arcDraft.r, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.setLineDash([])
+        if (arcDraft.a0 !== null) {
+          ctx.lineWidth = px(2.2)
+          ctx.beginPath()
+          ctx.arc(arcDraft.cx, arcDraft.cy, arcDraft.r, arcDraft.a0, curA)
+          ctx.stroke()
+        }
+      }
+    }
+
     // Pinler (uç + bacak + ad)
     for (const pin of layout.pins) {
       ctx.strokeStyle = '#89c4e8'
@@ -1680,7 +1815,11 @@ function SymbolCanvas({
         }
       } else if (pr.k === 'circle' || pr.k === 'arc') {
         const d = Math.hypot(loc.x - pr.cx, loc.y - pr.cy)
-        if (Math.abs(d - pr.r) <= tol) return i
+        if (Math.abs(d - pr.r) <= tol) {
+          if (pr.k === 'circle') return i
+          const ang = Math.atan2(loc.y - pr.cy, loc.x - pr.cx)
+          if (angleInArc(ang, pr.a0, pr.a1)) return i
+        }
       } else {
         if (Math.hypot(loc.x - pr.x, loc.y - pr.y) <= tol * 2) return i
       }
@@ -1716,6 +1855,29 @@ function SymbolCanvas({
       case 'circle':
         setShapeDraft({ a: sp, b: sp })
         return
+      case 'arc': {
+        if (!arcDraft) {
+          setArcDraft({ cx: sp.x, cy: sp.y, r: null, a0: null, cursor: sp })
+        } else if (arcDraft.r === null) {
+          const r = Math.hypot(loc.x - arcDraft.cx, loc.y - arcDraft.cy)
+          if (r < 0.3) return
+          const a0 = Math.atan2(loc.y - arcDraft.cy, loc.x - arcDraft.cx)
+          setArcDraft({ ...arcDraft, r, a0, cursor: loc })
+        } else if (arcDraft.a0 !== null) {
+          const a0 = arcDraft.a0
+          const r = arcDraft.r
+          const a1 = Math.atan2(loc.y - arcDraft.cy, loc.x - arcDraft.cx)
+          setSymbolDef({
+            ...symbolDef,
+            prims: [
+              ...symbolDef.prims,
+              { k: 'arc', cx: arcDraft.cx, cy: arcDraft.cy, r: +r.toFixed(2), a0, a1, w: 1.2 }
+            ]
+          })
+          setArcDraft(null)
+        }
+        return
+      }
       case 'text': {
         const txt = await ask(t('Sembol yazısı'), '', t('Örn: OPAMP, +, K'))
         if (txt && txt.trim()) {
@@ -1742,6 +1904,10 @@ function SymbolCanvas({
     const loc = toLocal(e.clientX - rect.left, e.clientY - rect.top)
     if (shapeDraft) {
       setShapeDraft({ a: shapeDraft.a, b: snapG(loc) })
+      return
+    }
+    if (arcDraft) {
+      setArcDraft({ ...arcDraft, cursor: loc })
       return
     }
     const drag = dragRef.current
@@ -1818,7 +1984,7 @@ function SymbolCanvas({
       type="button"
       className={tool === id ? 'active' : ''}
       disabled={!symbolDef}
-      onClick={() => { setTool(id); setShapeDraft(null) }}
+      onClick={() => { setTool(id); setShapeDraft(null); setArcDraft(null) }}
       title={title}
     >
       {icon} {label}
@@ -1838,6 +2004,7 @@ function SymbolCanvas({
             {symToolBtn('line', '╱', t('Çizgi'), t('Çizgi çiz (sürükle)'))}
             {symToolBtn('rect', '▭', t('Kutu'), t('Dikdörtgen çiz (sürükle)'))}
             {symToolBtn('circle', '◯', t('Daire'), t('Daire çiz (merkezden sürükle)'))}
+            {symToolBtn('arc', '◜', t('Yay'), t('Yay çiz — merkeze tıkla, yarıçap için tıkla, bitiş açısı için tıkla'))}
             {symToolBtn('text', 'A', t('Yazı'), t('Yazı ekle'))}
             {symToolBtn('delete', '✕', t('Sil'), t('Çizim öğesi sil'))}
             <button
@@ -1906,6 +2073,19 @@ function SymbolCanvas({
                 <label>
                   <input type="checkbox" checked={!!pr.fill} onChange={(e) => up({ ...pr, fill: e.target.checked })} /> {t('Dolu')}
                 </label>
+              </div>
+            )
+          }
+          if (pr.k === 'arc') {
+            const deg = (r: number) => Math.round((r * 180) / Math.PI)
+            const rad = (d: number) => (d * Math.PI) / 180
+            return (
+              <div className="fp-props">
+                <b>◜ {t('Yay')}</b>
+                <label>R<input type="number" step={0.25} min={0.25} value={pr.r} onChange={(e) => up({ ...pr, r: Math.max(0.25, parseFloat(e.target.value) || 1) })} /></label>
+                <label>{t('Başlangıç°')}<input type="number" step={5} value={deg(pr.a0)} onChange={(e) => up({ ...pr, a0: rad(parseFloat(e.target.value) || 0) })} /></label>
+                <label>{t('Bitiş°')}<input type="number" step={5} value={deg(pr.a1)} onChange={(e) => up({ ...pr, a1: rad(parseFloat(e.target.value) || 0) })} /></label>
+                <label>{t('Kalınlık')}<input type="number" step={0.2} min={0.4} value={pr.w ?? 1.2} onChange={(e) => up({ ...pr, w: Math.max(0.4, parseFloat(e.target.value) || 1.2) })} /></label>
               </div>
             )
           }
@@ -2146,6 +2326,58 @@ function Model3DTab({
         </div>
       )}
       {err && <div className="fp-3d-err">⚠ {err}</div>}
+
+      <div className="fp-3d-labels">
+        <div className="fp-canvas-tools">
+          <button
+            type="button"
+            onClick={() => {
+              // "Otomatik" modda model3d henüz yok — yazı eklemek için basit
+              // bir gövdeye geçilir (mevcut "Basit şekil" varsayılanlarıyla aynı)
+              const base = model3d ?? { kind: 'param' as const, shape: 'box' as const, height: 3, color: '#2e3138' }
+              setModel3d({
+                ...base,
+                labels: [
+                  ...(base.labels ?? []),
+                  { text: 'TXT', x: 0, y: 0, z: (base.kind === 'param' ? base.height ?? 3 : 1) + 0.2, size: 1, color: '#ffffff', rotZ: 0 }
+                ]
+              })
+            }}
+          >
+            ✚ {t('Model Üstüne Yazı Ekle')}
+          </button>
+        </div>
+        {(model3d?.labels ?? []).map((lbl, i) => {
+          const upLbl = (patch: Partial<FootprintModelLabel>) => {
+            if (!model3d) return
+            setModel3d({
+              ...model3d,
+              labels: (model3d.labels ?? []).map((l, j) => (j === i ? { ...l, ...patch } : l))
+            })
+          }
+          const removeLbl = () => {
+            if (!model3d) return
+            setModel3d({ ...model3d, labels: (model3d.labels ?? []).filter((_, j) => j !== i) })
+          }
+          return (
+            <div className="fp-3d-label-row" key={i}>
+              <input
+                type="text"
+                value={lbl.text}
+                onChange={(e) => upLbl({ text: e.target.value })}
+                className="fp-3d-label-text"
+              />
+              <label className="fp-3d-field">X<input type="number" step={0.5} value={lbl.x} onChange={(e) => upLbl({ x: parseFloat(e.target.value) || 0 })} /></label>
+              <label className="fp-3d-field">Y<input type="number" step={0.5} value={lbl.y} onChange={(e) => upLbl({ y: parseFloat(e.target.value) || 0 })} /></label>
+              <label className="fp-3d-field">Z<input type="number" step={0.1} value={lbl.z ?? 0} onChange={(e) => upLbl({ z: parseFloat(e.target.value) || 0 })} /></label>
+              <label className="fp-3d-field">{t('Boyut')}<input type="number" step={0.1} min={0.2} value={lbl.size ?? 1} onChange={(e) => upLbl({ size: Math.max(0.2, parseFloat(e.target.value) || 1) })} /></label>
+              <label className="fp-3d-field">{t('Dönüş')}<input type="number" step={15} value={lbl.rotZ ?? 0} onChange={(e) => upLbl({ rotZ: parseFloat(e.target.value) || 0 })} />°</label>
+              <input type="color" value={lbl.color ?? '#ffffff'} onChange={(e) => upLbl({ color: e.target.value })} />
+              <button type="button" className="btn-danger-outline" onClick={removeLbl} title={t('Yazıyı sil')}>✕</button>
+            </div>
+          )
+        })}
+      </div>
 
       <canvas
         ref={canvasRef}

@@ -109,6 +109,36 @@ export function capsuleRectGap(c: Capsule, r: Rect): number {
   return min - c.r
 }
 
+/** Nokta serbest poligonun içinde mi? (ışın yöntemi) */
+export function pointInPolygon(p: Point, poly: Point[]): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]
+    const b = poly[j]
+    if (
+      a.y > p.y !== b.y > p.y &&
+      p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x
+    ) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+/** Kapsül ile serbest poligon arasındaki boşluk (kapsül merkez hattı poligon
+ *  içindeyse çakışma kesin → negatif) — capsuleRectGap'in poligon genellemesi */
+export function capsulePolygonGap(c: Capsule, poly: Point[]): number {
+  const a = { x: c.x1, y: c.y1 }
+  const b = { x: c.x2, y: c.y2 }
+  if (pointInPolygon(a, poly) || pointInPolygon(b, poly)) return -c.r
+  let min = Infinity
+  for (let i = 0; i < poly.length; i++) {
+    const d = segSegDist(a, b, poly[i], poly[(i + 1) % poly.length])
+    if (d < min) min = d
+  }
+  return min - c.r
+}
+
 // ─── Dönüşümler ───────────────────────────────────────────────────────────
 
 /** Noktayı verilen açıyla (90° adım) döndür */
@@ -129,6 +159,26 @@ export function localToWorld(comp: ComponentInstance, p: Point): Point {
   const mirrored = comp.side === 'bottom' ? { x: -p.x, y: p.y } : p
   const rotated = rotatePoint(mirrored, comp.rotation)
   return { x: rotated.x + comp.x, y: rotated.y + comp.y }
+}
+
+/**
+ * Footprint-yerel bir yayın (a0,a1 radyan) başlangıç/bitiş açılarını
+ * komponentin yüzüne (mirror) ve dönüşüne göre dünya açılarına çevirir.
+ * Alt yüzdeki ayna simetrisi süpürme yönünü de ters çevirdiğinden, canvas
+ * arc'ın hep artan açı yönünde çizdiği aynı görsel yayı elde etmek için
+ * uçlar yer değiştirir.
+ */
+export function transformArcAngles(
+  a0: number,
+  a1: number,
+  comp: ComponentInstance
+): [number, number] {
+  const rot = (comp.rotation * Math.PI) / 180
+  const mirror = comp.side === 'bottom'
+  const map = (a: number) => (mirror ? Math.PI - a : a) + rot
+  const p0 = map(a0)
+  const p1 = map(a1)
+  return mirror ? [p1, p0] : [p0, p1]
 }
 
 /** Pad'in dünya konumunu döndürür */

@@ -93,6 +93,9 @@ export interface EditorState {
   view3dRequest: View3dRequest
   activeLayer: CopperLayer
   visibleLayers: Record<VisibleLayer, boolean>
+  /** PCB editöründe kartı arkadan görüntüle (sol-sağ aynalanmış görünüm) */
+  viewFlipped: boolean
+  toggleViewFlipped: () => void
   /** Yerleştirilmekte olan footprint (kütüphaneden seçilen) */
   placingFootprintId: string | null
   /** Yerleştirilmekte olan görsel (SVG/PNG içe aktarıldıktan sonra) */
@@ -101,6 +104,8 @@ export interface EditorState {
   drawingTrace: { points: Point[]; layer: CopperLayer; net: string; width: number } | null
   /** Çizilmekte olan serbest kart dış hattı (poligon) */
   drawingBoardOutline: Point[] | null
+  /** Çizilmekte olan serbest bakır alan (zone) sınırı (poligon) */
+  drawingZone: Point[] | null
   drcViolations: DrcViolation[] | null
   activeDialog: DialogId
   statusMessage: string
@@ -178,10 +183,18 @@ export interface EditorState {
   /** İzi belirtilen iç köşe noktasında iki ayrı ize böl */
   splitTraceAt: (traceId: string, index: number) => void
   switchTraceLayer: (viaAt: Point) => void
+  /** Çizim sırasında VAR OLAN bir via'ya bağlan: izi orada bitirir, via'nın
+   *  diğer katmanında çizime otomatik devam eder (yeni via oluşturmaz) */
+  continueTraceFromVia: (via: Via, at: Point) => void
   startBoardOutline: (p: Point) => void
   addBoardOutlinePoint: (p: Point) => void
   finishBoardOutline: () => void
   cancelBoardOutline: () => void
+  startZoneDraw: (p: Point) => void
+  addZonePoint: (p: Point) => void
+  /** Poligonu kapatıp zone'u oluşturur (net adı zaten belirlenmiş olmalı) */
+  finishZoneDraw: (net: string) => void
+  cancelZoneDraw: () => void
   addVia: (p: Point) => void
   addText: (p: Point, text: string) => void
   assignNet: (compId: string, padName: string, net: string) => void
@@ -243,10 +256,12 @@ export const useStore = create<EditorState>((set, get) => ({
   view3dRequest: null,
   activeLayer: 'top',
   visibleLayers: { ...defaultVisible },
+  viewFlipped: false,
   placingFootprintId: null,
   placingImage: null,
   drawingTrace: null,
   drawingBoardOutline: null,
+  drawingZone: null,
   drcViolations: null,
   activeDialog: null,
   statusMessage: '',
@@ -360,6 +375,7 @@ export const useStore = create<EditorState>((set, get) => ({
       mode,
       drawingTrace: null,
       drawingBoardOutline: null,
+      drawingZone: null,
       placingFootprintId: null,
       statusMessage:
         mode === 'schematic'
@@ -376,6 +392,7 @@ export const useStore = create<EditorState>((set, get) => ({
       tool,
       drawingTrace: null,
       drawingBoardOutline: null,
+      drawingZone: null,
       placingFootprintId: null,
       placingImage: null,
       statusMessage: toolHint(tool)
@@ -427,6 +444,8 @@ export const useStore = create<EditorState>((set, get) => ({
     set((state) => ({
       visibleLayers: { ...state.visibleLayers, [layer]: !state.visibleLayers[layer] }
     })),
+
+  toggleViewFlipped: () => set((state) => ({ viewFlipped: !state.viewFlipped })),
 
   setStatus: (msg) => set({ statusMessage: msg }),
   openDialog: (d) => set({ activeDialog: d }),
@@ -661,8 +680,7 @@ export const useStore = create<EditorState>((set, get) => ({
       }
       for (const z of p.zones) {
         if (sel.zoneIds.includes(z.id)) {
-          z.x += dx
-          z.y += dy
+          z.points = z.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }))
         }
       }
       for (const im of p.images) {
@@ -799,15 +817,17 @@ export const useStore = create<EditorState>((set, get) => ({
     }
     const otherLayer: CopperLayer = dt.layer === 'top' ? 'bottom' : 'top'
     get().commit((p) => {
-      if (dt.points.length >= 2) {
-        p.traces.push({
-          id: uid('t'),
-          layer: dt.layer,
-          points: [...dt.points, viaAt],
-          width: dt.width,
-          net: dt.net
-        })
-      }
+      // dt.points her zaman en az 1 nokta içerir (startTrace ile) — viaAt
+      // eklenince en az 2 noktalı geçerli bir iz oluşur; bu yüzden koşulsuz
+      // eklenir (aksi halde ilk noktadan hemen sağ tık/V ile via'ya
+      // geçildiğinde başlangıçtan via'ya hiç iz çizilmeden atlanıyordu)
+      p.traces.push({
+        id: uid('t'),
+        layer: dt.layer,
+        points: [...dt.points, viaAt],
+        width: dt.width,
+        net: dt.net
+      })
       p.vias.push({
         id: uid('v'),
         x: viaAt.x,
@@ -821,6 +841,39 @@ export const useStore = create<EditorState>((set, get) => ({
     }))
     set({
       drawingTrace: { points: [viaAt], layer: otherLayer, net: dt.net, width: dt.width },
+      activeLayer: otherLayer
+    })
+  },
+
+  continueTraceFromVia: (via, at) => {
+    const state = get()
+    const dt = state.drawingTrace
+    if (!dt) return
+    if (state.project.board.layerCount === 1) {
+      set({ statusMessage: t('Tek katmanlı kartta via ile katman değiştirilemez') })
+      return
+    }
+    const otherLayer: CopperLayer = dt.layer === 'top' ? 'bottom' : 'top'
+    const finalNet = dt.net || via.net
+    get().commit((p) => {
+      // switchTraceLayer'daki gibi koşulsuz ekle — dt.points en az 1 nokta
+      // içerir, at eklenince her zaman geçerli (>=2 noktalı) bir iz oluşur
+      p.traces.push({
+        id: uid('t'),
+        layer: dt.layer,
+        points: [...dt.points, at],
+        width: dt.width,
+        net: finalNet
+      })
+      if (finalNet && !via.net) {
+        const v = p.vias.find((vv) => vv.id === via.id)
+        if (v) v.net = finalNet
+      }
+    }, t('Via\'ya bağlandı — {layer} katmanda devam', {
+      layer: otherLayer === 'top' ? t('üst') : t('alt')
+    }))
+    set({
+      drawingTrace: { points: [at], layer: otherLayer, net: finalNet, width: dt.width },
       activeLayer: otherLayer
     })
   },
@@ -855,13 +908,42 @@ export const useStore = create<EditorState>((set, get) => ({
       for (const tr of p.traces) tr.points = tr.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }))
       for (const v of p.vias) { v.x += dx; v.y += dy }
       for (const tx of p.texts) { tx.x += dx; tx.y += dy }
-      for (const z of p.zones) { z.x += dx; z.y += dy }
+      for (const z of p.zones) { z.points = z.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })) }
       for (const h of p.board.mountingHoles) { h.x += dx; h.y += dy }
     }, t('Kart dış hattı serbest çizimle güncellendi'))
     set({ drawingBoardOutline: null, tool: 'select' })
   },
 
   cancelBoardOutline: () => set({ drawingBoardOutline: null }),
+
+  startZoneDraw: (p) => set({ drawingZone: [p] }),
+
+  addZonePoint: (p) =>
+    set((state) => {
+      if (!state.drawingZone) return {}
+      return { drawingZone: [...state.drawingZone, p] }
+    }),
+
+  finishZoneDraw: (net) => {
+    const pts = get().drawingZone
+    if (!pts || pts.length < 3) {
+      set({ drawingZone: null })
+      return
+    }
+    get().commit((p) => {
+      p.zones.push({
+        id: uid('z'),
+        layer: get().activeLayer,
+        points: pts,
+        net: net.trim(),
+        clearance: p.rules.clearance,
+        thermalRelief: true
+      })
+    }, t('Bakır alan eklendi ({net})', { net: net.trim() || t('atanmamış') }))
+    set({ drawingZone: null, tool: 'select' })
+  },
+
+  cancelZoneDraw: () => set({ drawingZone: null }),
 
   addVia: (p) => {
     get().commit((proj) => {
@@ -1200,7 +1282,7 @@ function toolHint(tool: ToolId): string {
     case 'text':
       return t('Yazı — eklemek için tıklayın')
     case 'zone':
-      return t('Bakır alan — köşeden köşeye sürükleyin')
+      return t('Bakır alan — köşe köşe tıklayın, çift tık/Enter ile bitirin (Esc: iptal)')
     case 'measure':
       return t('Ölçüm — sürükleyin; Shift: 45° kilidi. Ölçüm sonrası seçimi bu vektörle taşıyabilirsiniz')
     case 'net':

@@ -56,21 +56,26 @@ export function rasterizeCopper(
     }
   }
 
-  // 1) Bakır alanlar (inflate uygulanır — takım yarıçapı)
+  // 1) Bakır alanlar (otomatik hesaplanmış gerçek dolgu şekli — dış sınır
+  // beyaz, delikler [foreign-net boşluk + thermal relief] siyah; evenodd)
   for (const z of geo.zones) {
-    ctx.fillStyle = '#fff'
-    ctx.fillRect(z.x - inflateMm, z.y - inflateMm, z.width + 2 * inflateMm, z.height + 2 * inflateMm)
-  }
-  // 2) Farklı netlerin çevresini boşalt
-  if (geo.zones.length > 0) {
-    const clearance = Math.max(...geo.zones.map((z) => z.clearance))
-    for (const item of geo.copper) {
-      const sameNet = geo.zones.every((z) => z.net !== '' && item.net === z.net)
-      // Boşluk, takım yarıçapı ŞİŞİRİLMEDEN çizilir ki izolasyon kanalı doğru kalsın
-      if (!sameNet) drawItem(item, '#000', clearance - inflateMm)
+    for (const isl of z.islands) {
+      if (isl.outer.length < 3) continue
+      ctx.beginPath()
+      ctx.moveTo(isl.outer[0].x, isl.outer[0].y)
+      for (const p of isl.outer.slice(1)) ctx.lineTo(p.x, p.y)
+      ctx.closePath()
+      for (const hole of isl.holes) {
+        if (hole.length < 3) continue
+        ctx.moveTo(hole[0].x, hole[0].y)
+        for (const p of hole.slice(1)) ctx.lineTo(p.x, p.y)
+        ctx.closePath()
+      }
+      ctx.fillStyle = '#fff'
+      ctx.fill('evenodd')
     }
   }
-  // 3) Tüm bakır (takım yarıçapı kadar şişirilmiş)
+  // 2) Tüm bakır (takım yarıçapı kadar şişirilmiş)
   for (const item of geo.copper) {
     drawItem(item, '#fff', inflateMm)
   }

@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import { useStore } from '../state/store'
-import type { CopperLayer } from '../types'
+import type { CopperLayer, VisibleLayer } from '../types'
 import { saveTextFile, saveFilesToDirectory, type ExportFile } from '../io/files'
 import {
   gerberFileSet,
@@ -25,7 +25,8 @@ import {
   svgOutline,
   svgComposite,
   svgOutlineTraces,
-  svgFullBoard
+  svgFullBoard,
+  svgCustomExport
 } from '../io/svg'
 import { dxfBoard } from '../io/dxf'
 import {
@@ -35,7 +36,17 @@ import {
   gcodeOutlineCut
 } from '../io/gcode'
 import { bomCsv, pickAndPlaceCsv } from '../io/bom'
-import { exportCompositePng, exportLayerPng, compositePngBlob, layerPngBlob, exportOutlineTracesPng } from '../io/png'
+import {
+  exportCompositePng,
+  exportLayerPng,
+  compositePngBlob,
+  layerPngBlob,
+  exportOutlineTracesPng,
+  outlineTracesPngBlob,
+  exportSilkLayerPng,
+  silkLayerPngBlob,
+  exportCustomPng
+} from '../io/png'
 import {
   exportSchematicPng,
   schematicSvgContent,
@@ -44,7 +55,18 @@ import {
 import { saveProjectFile } from '../io/project'
 import { useT } from '../i18n'
 
-type Section = 'gerber' | 'svg' | 'gcode' | 'png' | 'docs'
+type Section = 'gerber' | 'svg' | 'gcode' | 'png' | 'docs' | 'custom'
+
+const CUSTOM_LAYERS: { id: VisibleLayer; label: string }[] = [
+  { id: 'top', label: 'Üst bakır' },
+  { id: 'bottom', label: 'Alt bakır' },
+  { id: 'zones', label: 'Bakır alanlar' },
+  { id: 'top-silk', label: 'Üst silkscreen' },
+  { id: 'bottom-silk', label: 'Alt silkscreen' },
+  { id: 'drill', label: 'Delikler' },
+  { id: 'outline', label: 'Kart sınırı' },
+  { id: 'ratsnest', label: 'Ratsnest (hava telleri)' }
+]
 
 export function ExportDialog() {
   const activeDialog = useStore((s) => s.activeDialog)
@@ -62,6 +84,19 @@ export function ExportDialog() {
 
   // G-code seçenekleri
   const [gc, setGc] = useState(defaultGcodeOptions())
+
+  // Özel dışa aktarım — katman seçimi (varsayılan: hepsi açık)
+  const [customLayers, setCustomLayers] = useState<Record<VisibleLayer, boolean>>({
+    top: true,
+    bottom: true,
+    'top-silk': true,
+    'bottom-silk': true,
+    zones: true,
+    drill: true,
+    outline: true,
+    ratsnest: false
+  })
+  const [customBlackWhite, setCustomBlackWhite] = useState(true)
 
   if (activeDialog !== 'export') return null
 
@@ -123,7 +158,72 @@ export function ExportDialog() {
           <button className={section === 'docs' ? 'active' : ''} onClick={() => setSection('docs')}>
             {t('BOM / Proje')}
           </button>
+          <button className={section === 'custom' ? 'active' : ''} onClick={() => setSection('custom')}>
+            {t('Özel Seçim')}
+          </button>
         </div>
+
+        {section === 'custom' && (
+          <div className="export-body">
+            <p>
+              {t('İstediğiniz katmanları seçip TEK bir dosyada birleştirerek dışa aktarın (SVG veya PNG).')}
+            </p>
+            <div className="export-options custom-layer-grid">
+              {CUSTOM_LAYERS.filter((l) => !singleLayer || (l.id !== 'bottom' && l.id !== 'bottom-silk')).map((l) => (
+                <label key={l.id}>
+                  <input
+                    type="checkbox"
+                    checked={customLayers[l.id]}
+                    onChange={(e) => setCustomLayers({ ...customLayers, [l.id]: e.target.checked })}
+                  />
+                  {t(l.label)}
+                </label>
+              ))}
+            </div>
+            <div className="export-buttons">
+              <button
+                onClick={() => setCustomLayers(Object.fromEntries(CUSTOM_LAYERS.map((l) => [l.id, true])) as Record<VisibleLayer, boolean>)}
+              >
+                {t('Hepsini Seç')}
+              </button>
+              <button
+                onClick={() => setCustomLayers(Object.fromEntries(CUSTOM_LAYERS.map((l) => [l.id, false])) as Record<VisibleLayer, boolean>)}
+              >
+                {t('Hiçbirini Seçme')}
+              </button>
+            </div>
+            <div className="export-options">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={customBlackWhite}
+                  onChange={(e) => setCustomBlackWhite(e.target.checked)}
+                />
+                {t('Siyah-beyaz (tüm katmanları siyaha zorla)')}
+              </label>
+            </div>
+            <div className="export-buttons">
+              <button
+                className="btn-primary"
+                disabled={busy}
+                onClick={() =>
+                  run(t('Özel dışa aktarım SVG'), () =>
+                    saveTextFile(`${base}-ozel.svg`, svgCustomExport(project, getFootprint, customLayers, customBlackWhite), 'image/svg+xml').then(() => {})
+                  )
+                }
+              >
+                {t('SVG olarak indir')}
+              </button>
+              <button
+                className="btn-primary"
+                disabled={busy}
+                onClick={() => run(t('Özel dışa aktarım PNG'), () => exportCustomPng(project, getFootprint, customLayers, customBlackWhite))}
+              >
+                {t('PNG olarak indir')}
+              </button>
+            </div>
+          </div>
+        )}
 
         {section === 'gerber' && (
           <div className="export-body">
@@ -141,11 +241,16 @@ export function ExportDialog() {
                       name: `${base}.drl`,
                       content: excellonDrill(project, getFootprint)
                     })
+                    files.push({
+                      name: `${base}-mekanik.dxf`,
+                      content: dxfBoard(project, getFootprint),
+                      mime: 'application/dxf'
+                    })
                     return files
                   })
                 }
               >
-                📦 {t('Tüm Gerber Setini Tek Klasöre Aktar ({n} dosya)', { n: (singleLayer ? 5 : 9) + 1 })}
+                📦 {t('Tüm Gerber Setini Tek Klasöre Aktar ({n} dosya)', { n: (singleLayer ? 5 : 9) + 2 })}
               </button>
             </div>
             <h4>{t('Ayrı dosyalar')}:</h4>
@@ -278,6 +383,11 @@ export function ExportDialog() {
                         }),
                         mime: 'image/svg+xml'
                       })
+                      files.push({
+                        name: `${base}-alt-silk.svg`,
+                        content: svgSilkLayer(project, getFootprint, 'bottom'),
+                        mime: 'image/svg+xml'
+                      })
                     }
                     // Lehim pastası (stencil), lehim maskesi ve montaj çizimi
                     files.push(
@@ -339,6 +449,22 @@ export function ExportDialog() {
               >
                 {t('Üst silkscreen')} (SVG)
               </button>
+              {!singleLayer && (
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    run(t('Alt silkscreen SVG'), () =>
+                      saveTextFile(
+                        `${base}-alt-silk.svg`,
+                        svgSilkLayer(project, getFootprint, 'bottom'),
+                        'image/svg+xml'
+                      ).then(() => {})
+                    )
+                  }
+                >
+                  {t('Alt silkscreen')} (SVG)
+                </button>
+              )}
               <button
                 disabled={busy}
                 onClick={() =>
@@ -598,11 +724,17 @@ export function ExportDialog() {
                     const files: ExportFile[] = []
                     const composite = await compositePngBlob(project, getFootprint)
                     if (composite) files.push({ name: `${base}-gorsel.png`, content: composite })
+                    const outlineTraces = await outlineTracesPngBlob(project, getFootprint)
+                    if (outlineTraces) files.push({ name: `${base}-dishat-yollar.png`, content: outlineTraces })
                     const top = await layerPngBlob(project, getFootprint, 'top', { mirror: false })
                     if (top) files.push({ name: `${base}-ust.png`, content: top })
+                    const topSilk = await silkLayerPngBlob(project, getFootprint, 'top')
+                    if (topSilk) files.push({ name: `${base}-ust-silk.png`, content: topSilk })
                     if (!singleLayer) {
                       const bottom = await layerPngBlob(project, getFootprint, 'bottom', { mirror: true })
                       if (bottom) files.push({ name: `${base}-alt-aynali.png`, content: bottom })
+                      const bottomSilk = await silkLayerPngBlob(project, getFootprint, 'bottom')
+                      if (bottomSilk) files.push({ name: `${base}-alt-silk.png`, content: bottomSilk })
                     }
                     const sema = await schematicPngBlob(project, getFootprint)
                     if (sema) files.push({ name: `${base}-sema.png`, content: sema })
@@ -650,6 +782,24 @@ export function ExportDialog() {
                   }
                 >
                   ▼ {t('Alt bakır — aynalı (S/B üretim)')}
+                </button>
+              )}
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run(t('Üst silkscreen PNG'), () => exportSilkLayerPng(project, getFootprint, 'top'))
+                }
+              >
+                {t('Üst silkscreen')} (PNG)
+              </button>
+              {!singleLayer && (
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    run(t('Alt silkscreen PNG'), () => exportSilkLayerPng(project, getFootprint, 'bottom'))
+                  }
+                >
+                  {t('Alt silkscreen')} (PNG)
                 </button>
               )}
               <button

@@ -5,7 +5,7 @@
 // algoritması) ve sabit ışıkla gölgeleyerek çizer. Amaç: gerçekçi bir önizleme.
 
 import type { ComponentInstance, Footprint, PadDef, Point, Project } from '../types'
-import { componentBBox, localToWorld, padWorldPos, padWorldSize, rotatePoint } from '../core/geometry'
+import { componentBBox, localToWorld, padWorldPos, padWorldSize, rotatePoint, pointInPolygon } from '../core/geometry'
 import { boardEditablePolygon, cutoutOutlinePoints, filletPolygon } from '../core/boardGeometry'
 import { placeText } from './vectorFont'
 import { getCachedImage } from './imageCache'
@@ -155,11 +155,9 @@ function buildBoard(project: Project, out: Face[]) {
   const maskRaw = project.board.color || '#1a5c2a'
   const mask = hexToRgb(maskRaw)
   const fr4: [number, number, number] = [176, 158, 108]
-  // İç kesimler (delik/yuva) — üst yüzde gerçek boşluk (evenodd ile delik).
-  // NOT: alt yüzde AYNI deliği ayrıca kesmiyoruz — üst ve alt yüz farklı z'de
-  // olduğundan perspektifte iki delik sınırı hafifçe kayar ve deliğin
-  // kenarında istenmeyen ince bir "çerçeve/halka" görünürdü. Alt yüz düz
-  // bırakılınca delikten tek, temiz bir kenar görünür (çerçevesiz).
+  // İç kesimler (delik/yuva) — hem üst hem alt yüzde gerçek boşluk (evenodd
+  // ile delik) + aralarında FR4 renkli iç duvar, böylece gerçek bir oyuk/yuva
+  // gibi görünür (her iki taraftan da bakılınca hole olarak görünür).
   const cutoutRings = (project.board.cutouts ?? [])
     .map((c) => {
       const pts = cutoutOutlinePoints(c)
@@ -175,10 +173,10 @@ function buildBoard(project: Project, out: Face[]) {
     .filter((r) => r.length >= 3)
   // Üst yüz (lehim maskesi rengi)
   flatFace(poly, TOP_Z, mask, out, 'board', cutoutRings)
-  // Alt yüz (biraz koyu) — deliksiz, düz
+  // Alt yüz (biraz koyu) — AYNI kesim delikleriyle (iki taraftan da oyuk görünür)
   const dark = mask.map((c) => Math.round(c * 0.7)) as [number, number, number]
-  flatFace([...poly].reverse(), BOT_Z, dark, out, 'board')
-  // Yan duvarlar (FR4)
+  flatFace([...poly].reverse(), BOT_Z, dark, out, 'board', cutoutRings)
+  // Yan duvarlar (FR4) — kart dış hattı
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i]
     const b = poly[(i + 1) % poly.length]
@@ -190,8 +188,26 @@ function buildBoard(project: Project, out: Face[]) {
     ]
     out.push({ pts: q, color: shade(fr4, faceNormal(q)), layer: 'board' })
   }
-  // NOT: kesimler (cutout) için iç duvar (FR4 rengi) ÇİZİLMEZ — kart dış
-  // hattından farklı olarak yalnız düz bir delik/pencere olarak görünür.
+  // İç duvarlar (FR4) — kesimlerin (cutout) iç yüzeyi, gerçek bir oyuk/yuva
+  // gibi görünmesi için (ters sırada: normal deliğin içine, kesimin kendi
+  // merkezine doğru baksın). Kesim kart kenarını taşarsa (tamamı kart
+  // sınırları içinde değilse) duvar EKLENMEZ — aksi halde kartın dışında
+  // boşlukta asılı bir "çerçeve" gibi görünürdü.
+  for (const ring of cutoutRings) {
+    if (!ring.every((p) => pointInPolygon(p, poly))) continue
+    const rev = [...ring].reverse()
+    for (let i = 0; i < rev.length; i++) {
+      const a = rev[i]
+      const b = rev[(i + 1) % rev.length]
+      const q: V3[] = [
+        { x: a.x, y: a.y, z: BOT_Z },
+        { x: b.x, y: b.y, z: BOT_Z },
+        { x: b.x, y: b.y, z: TOP_Z },
+        { x: a.x, y: a.y, z: TOP_Z }
+      ]
+      out.push({ pts: q, color: shade(fr4, faceNormal(q)), layer: 'board' })
+    }
+  }
   // Montaj delikleri — her iki yüzde koyu disk (alttan bakınca da görünür)
   for (const h of project.board.mountingHoles) {
     out.push({ pts: disc(h.x, h.y, h.drill / 2, TOP_Z + 0.01), color: 'rgb(18,20,24)', layer: 'flat-top' })
@@ -785,6 +801,60 @@ export function render3D(ctx: CanvasRenderingContext2D, s: Scene3DState): void {
     ctx.imageSmoothingEnabled = true
     ctx.drawImage(img, 0, 0, im.width, im.height)
     ctx.restore()
+  }
+
+  // ── Footprint 3B model yazı etiketleri (model3d.labels) ──
+  // Kart silk yazılarıyla AYNI teknik: vektör harf konturları nokta nokta
+  // projekte edilir (bkz. yukarıdaki "Silkscreen yazıları"), böylece gerçek
+  // 3B perspektifle doğru görünür — bozulma/kayma olmaz, kamerayı döndürmek
+  // yalnızca doğal ölçek/açı foreshortening yapar (metin modele yapışık kalır).
+  for (const comp of s.project.components) {
+    const fp = s.getFootprint(comp.footprintId)
+    const labels = fp?.model3d?.labels
+    if (!labels || labels.length === 0) continue
+    const bottom = comp.side === 'bottom'
+    if (bottom === eyeAbove) continue // karşı yüzdeki bileşen kartın arkasında kalır
+    const dir = bottom ? -1 : 1
+    const compRad = (comp.rotation * Math.PI) / 180
+    const cos2 = Math.cos(compRad)
+    const sin2 = Math.sin(compRad)
+    const baseZ = surfaceZ(comp)
+    for (const lbl of labels) {
+      const size = lbl.size ?? 1.2
+      const z = baseZ + dir * (lbl.z ?? 0.3)
+      const rot = ((lbl.rotZ ?? 0) * Math.PI) / 180
+      const cosL = Math.cos(rot)
+      const sinL = Math.sin(rot)
+      const { strokes, strokeWidth } = placeText(lbl.text, { x: 0, y: 0 }, size, 0, false, 'center', {})
+      ctx.strokeStyle = lbl.color || '#ffffff'
+      ctx.lineCap = 'round'
+      for (const poly of strokes) {
+        const scr: Proj[] = []
+        let ok = true
+        for (const p of poly) {
+          // 1) etiketin kendi dönüşü (serbest açı, yerel/aynalanmamış uzayda)
+          const rx = p.x * cosL - p.y * sinL
+          const ry = p.x * sinL + p.y * cosL
+          // 2) etiket konumu, ardından komponentin mirror+rotate+translate
+          // dönüşümü (localToWorld ile aynı sıra — bkz. transformArcAngles)
+          const lx = lbl.x + rx
+          const ly = lbl.y + ry
+          const mx = bottom ? -lx : lx
+          const my = ly
+          const wx = comp.x + (mx * cos2 - my * sin2)
+          const wy = comp.y + (mx * sin2 + my * cos2)
+          const pr = projectPoint({ x: wx, y: wy, z })
+          if (!pr) { ok = false; break }
+          scr.push(pr)
+        }
+        if (!ok || scr.length < 2) continue
+        ctx.lineWidth = Math.max(1, (strokeWidth * basis.focal) / scr[0].depth)
+        ctx.beginPath()
+        ctx.moveTo(scr[0].sx, scr[0].sy)
+        for (const p of scr.slice(1)) ctx.lineTo(p.sx, p.sy)
+        ctx.stroke()
+      }
+    }
   }
 
   // ── Pin adı etiketleri (isteğe bağlı) — kaplama olarak her zaman üstte ──
