@@ -1001,6 +1001,11 @@ export function CanvasEditor() {
         case '2':
           s.setActiveLayer('bottom')
           break
+        case 'Tab':
+          // Çizim sürerken katmanı via eklemeden anında değiştir (üst<->alt)
+          e.preventDefault()
+          s.setActiveLayer(s.activeLayer === 'top' ? 'bottom' : 'top')
+          break
         case 'g':
         case 'G': {
           const grids = [2.54, 1.27, 0.635, 0.5, 0.25, 0.1]

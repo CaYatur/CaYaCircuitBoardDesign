@@ -1082,5 +1082,24 @@ const en: Record<string, string> = {
   'Tam Kart — her şey dahil': 'Full Board — everything included',
   'Tam kart SVG': 'Full board SVG',
   'Dış çerçeve + yollar + pad\'ler + vialar + delikler + silkscreen yazılar — tek eksiksiz SVG':
-    'Outline + traces + pads + vias + drills + silkscreen texts — one complete SVG'
+    'Outline + traces + pads + vias + drills + silkscreen texts — one complete SVG',
+
+  // ── Yeni: tek yüz üretim yığını (üst/alt ayrı, tam koyu S/B) ──
+  'Üst yığın SVG': 'Top stack SVG',
+  'Alt yığın SVG': 'Bottom stack SVG',
+  'Üst yığın PNG': 'Top stack PNG',
+  'Alt yığın PNG': 'Bottom stack PNG',
+  'Üst yığın — bakır+alan+delik+sınır (S/B)': 'Top stack — copper+areas+drills+outline (B&W)',
+  'Alt yığın — bakır+alan+delik+sınır (S/B)': 'Bottom stack — copper+areas+drills+outline (B&W)',
+  'Üst bakır + üst bakır alanları + delikler + kart sınırı + üst silk + üst görseller — tam koyu S/B tek katman':
+    'Top copper + top copper areas + drills + board outline + top silk + top images — solid B&W single layer',
+  'Alt bakır + alt bakır alanları + delikler + kart sınırı + alt silk + alt görseller — tam koyu S/B tek katman':
+    'Bottom copper + bottom copper areas + drills + board outline + bottom silk + bottom images — solid B&W single layer',
+
+  // ── Yeni: çizim sırasında via eklemeden katman değiştirme ──
+  'İz katmanı değişti: {layer}': 'Trace layer switched: {layer}',
+
+  // ── Yeni: toplu dışa aktarımda kısmi hata bildirimi ──
+  '⚠ {n} dosya aktarıldı, {k} dosya yazılamadı (başka programda açık olabilir): {list}':
+    '⚠ {n} files exported, {k} files failed (may be open in another program): {list}'
 }

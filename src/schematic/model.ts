@@ -557,6 +557,50 @@ export function removeOrphanWires(
   return before - project.schematic.wires.length
 }
 
+/**
+ * Her iki ucu da bir pine veya başka bir tele/kavşağa değmeyen (boşta/asılı
+ * kalmış) tellerin id kümesi — editörde bu teller ayrı renkle (bağlantısız
+ * uyarısı) çizilir.
+ */
+export function danglingWireIds(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined
+): Set<string> {
+  const wires = project.schematic.wires
+  const result = new Set<string>()
+  if (wires.length === 0) return result
+
+  const pinPositions: Point[] = []
+  for (const sym of project.schematic.symbols) {
+    const comp = project.components.find((c) => c.id === sym.componentId)
+    if (!comp) continue
+    const fp = getFootprint(comp.footprintId)
+    if (!fp) continue
+    for (const pin of symbolLayout(fp).pins) {
+      pinPositions.push(symbolToWorld(sym, pin.end))
+    }
+  }
+
+  const endConnected = (end: Point, selfId: string): boolean => {
+    if (pinPositions.some((p) => near(p, end))) return true
+    for (const w of wires) {
+      if (w.id === selfId) continue
+      if (w.points.some((p) => near(p, end)) || pointOnWire(end, w.points)) return true
+    }
+    return false
+  }
+
+  for (const w of wires) {
+    if (w.points.length < 2) {
+      result.add(w.id)
+      continue
+    }
+    const ends = [w.points[0], w.points[w.points.length - 1]]
+    if (!ends.every((e) => endConnected(e, w.id))) result.add(w.id)
+  }
+  return result
+}
+
 /** Herhangi bir tele (hâlâ) bağlı olan pinlerin `compId::padName` kümesi. */
 export function schematicConnectedPins(
   project: Project,

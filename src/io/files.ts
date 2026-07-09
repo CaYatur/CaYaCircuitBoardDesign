@@ -134,12 +134,22 @@ export async function saveMultipleFiles(files: ExportFile[]): Promise<void> {
   }
 }
 
+export interface SaveDirResult {
+  /** Klasöre başarıyla yazılan dosya sayısı */
+  count: number
+  /** Yazılamayan dosya adları (kilitli/açık dosya, izin vb.) — boşsa hepsi yazıldı demektir */
+  failed: string[]
+}
+
 /**
  * Birden çok dosyayı tek seferde SEÇİLEN BİR KLASÖRE yazar (File System Access
  * API — showDirectoryPicker). API yoksa sıralı indirmeye düşer.
- * Döndürdüğü sayı yazılan dosya adedidir (0 = kullanıcı iptal etti).
+ * Her dosya AYRI ele alınır: biri (kilitli/açık dosya, izin vb. nedenle)
+ * yazılamasa bile geri kalanlar yazılmaya devam eder — tek bir dosya hatası
+ * tüm toplu aktarımı sessizce yarıda kesmez (`failed` ile hangilerinin
+ * yazılamadığı bildirilir).
  */
-export async function saveFilesToDirectory(files: ExportFile[]): Promise<number> {
+export async function saveFilesToDirectory(files: ExportFile[]): Promise<SaveDirResult> {
   // Masaüstü: yerel klasör seçme diyalogu (macOS'ta kilitlenmez)
   const n = native()
   if (n) {
@@ -148,28 +158,38 @@ export async function saveFilesToDirectory(files: ExportFile[]): Promise<number>
     )
     const res = await n.exportToDir({ files: payload })
     if (res.error) throw new Error(res.error)
-    return res.count ?? 0
+    if (res.canceled) return { count: 0, failed: [] }
+    return { count: res.count ?? 0, failed: (res.failed ?? []).map((f) => f.name) }
   }
   const w = window as any
   if (typeof w.showDirectoryPicker === 'function') {
     try {
       const dir = await w.showDirectoryPicker({ mode: 'readwrite' })
+      const failed: string[] = []
       for (const f of files) {
-        const handle = await dir.getFileHandle(f.name, { create: true })
-        const writable = await handle.createWritable()
-        const blob =
-          f.content instanceof Blob
-            ? f.content
-            : new Blob([f.content], { type: f.mime ?? 'text/plain' })
-        await writable.write(blob)
-        await writable.close()
+        try {
+          const handle = await dir.getFileHandle(f.name, { create: true })
+          const writable = await handle.createWritable()
+          const blob =
+            f.content instanceof Blob
+              ? f.content
+              : new Blob([f.content], { type: f.mime ?? 'text/plain' })
+          await writable.write(blob)
+          await writable.close()
+        } catch {
+          failed.push(f.name)
+        }
       }
-      return files.length
+      // Klasöre yazılamayanları indirme yöntemiyle kurtar (tamamen kaybolmasınlar)
+      if (failed.length > 0) {
+        await saveMultipleFiles(files.filter((f) => failed.includes(f.name)))
+      }
+      return { count: files.length - failed.length, failed }
     } catch (err: any) {
-      if (err?.name === 'AbortError') return 0
-      // API başarısız — sıralı indirmeye düş
+      if (err?.name === 'AbortError') return { count: 0, failed: [] }
+      // API başarısız (örn. izin verilmedi) — tümünü sıralı indirmeye düş
     }
   }
   await saveMultipleFiles(files)
-  return files.length
+  return { count: files.length, failed: [] }
 }

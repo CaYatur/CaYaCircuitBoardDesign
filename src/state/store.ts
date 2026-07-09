@@ -432,9 +432,17 @@ export const useStore = create<EditorState>((set, get) => ({
       set({ statusMessage: t('Tek katmanlı kart — alt bakır kapalı (Kart ayarlarından değiştirin)') })
       return
     }
+    const dt = get().drawingTrace
     set({
       activeLayer: layer,
-      statusMessage: t('Aktif katman: {layer}', {
+      // Çizim sürerken katman tuşuna basılırsa via eklemeden mevcut izin
+      // rengini/katmanını anında değiştir (iptal edip yeniden çizmeye gerek yok)
+      drawingTrace: dt ? { ...dt, layer } : dt,
+      statusMessage: dt
+        ? t('İz katmanı değişti: {layer}', {
+            layer: layer === 'top' ? t('Üst bakır') : t('Alt bakır')
+          })
+        : t('Aktif katman: {layer}', {
         layer: layer === 'top' ? t('Üst bakır') : t('Alt bakır')
       })
     })

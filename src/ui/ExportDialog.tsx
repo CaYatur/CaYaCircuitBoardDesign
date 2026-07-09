@@ -26,7 +26,8 @@ import {
   svgComposite,
   svgOutlineTraces,
   svgFullBoard,
-  svgCustomExport
+  svgCustomExport,
+  svgSideStack
 } from '../io/svg'
 import { dxfBoard } from '../io/dxf'
 import {
@@ -45,7 +46,9 @@ import {
   outlineTracesPngBlob,
   exportSilkLayerPng,
   silkLayerPngBlob,
-  exportCustomPng
+  exportCustomPng,
+  exportSideStackPng,
+  sideStackPngBlob
 } from '../io/png'
 import {
   exportSchematicPng,
@@ -121,12 +124,20 @@ export function ExportDialog() {
     setBusy(true)
     try {
       const files = await build()
-      const n = await saveFilesToDirectory(files)
-      setStatus(
-        n > 0
-          ? t('✓ {n} dosya tek seferde dışa aktarıldı', { n })
-          : t('Toplu dışa aktarma iptal edildi')
-      )
+      const { count, failed } = await saveFilesToDirectory(files)
+      if (count === 0 && failed.length === 0) {
+        setStatus(t('Toplu dışa aktarma iptal edildi'))
+      } else if (failed.length > 0) {
+        setStatus(
+          t('⚠ {n} dosya aktarıldı, {k} dosya yazılamadı (başka programda açık olabilir): {list}', {
+            n: count,
+            k: failed.length,
+            list: failed.join(', ')
+          })
+        )
+      } else {
+        setStatus(t('✓ {n} dosya tek seferde dışa aktarıldı', { n: count }))
+      }
     } catch (err: any) {
       setStatus(t('Dışa aktarma hatası: {err}', { err: err?.message ?? err }))
     } finally {
@@ -368,6 +379,11 @@ export function ExportDialog() {
                         mime: 'image/svg+xml'
                       },
                       {
+                        name: `${base}-ust-yigin.svg`,
+                        content: svgSideStack(project, getFootprint, 'top'),
+                        mime: 'image/svg+xml'
+                      },
+                      {
                         name: `${base}-sema.svg`,
                         content: schematicSvgContent(project, getFootprint),
                         mime: 'image/svg+xml'
@@ -386,6 +402,11 @@ export function ExportDialog() {
                       files.push({
                         name: `${base}-alt-silk.svg`,
                         content: svgSilkLayer(project, getFootprint, 'bottom'),
+                        mime: 'image/svg+xml'
+                      })
+                      files.push({
+                        name: `${base}-alt-yigin.svg`,
+                        content: svgSideStack(project, getFootprint, 'bottom'),
                         mime: 'image/svg+xml'
                       })
                     }
@@ -522,6 +543,38 @@ export function ExportDialog() {
               >
                 🗺 {t('Tam Kart — her şey dahil')} (SVG)
               </button>
+              <button
+                disabled={busy}
+                title={t('Üst bakır + üst bakır alanları + delikler + kart sınırı + üst silk + üst görseller — tam koyu S/B tek katman')}
+                onClick={() =>
+                  run(t('Üst yığın SVG'), () =>
+                    saveTextFile(
+                      `${base}-ust-yigin.svg`,
+                      svgSideStack(project, getFootprint, 'top'),
+                      'image/svg+xml'
+                    ).then(() => {})
+                  )
+                }
+              >
+                ▲ {t('Üst yığın — bakır+alan+delik+sınır (S/B)')} (SVG)
+              </button>
+              {!singleLayer && (
+                <button
+                  disabled={busy}
+                  title={t('Alt bakır + alt bakır alanları + delikler + kart sınırı + alt silk + alt görseller — tam koyu S/B tek katman')}
+                  onClick={() =>
+                    run(t('Alt yığın SVG'), () =>
+                      saveTextFile(
+                        `${base}-alt-yigin.svg`,
+                        svgSideStack(project, getFootprint, 'bottom'),
+                        'image/svg+xml'
+                      ).then(() => {})
+                    )
+                  }
+                >
+                  ▼ {t('Alt yığın — bakır+alan+delik+sınır (S/B)')} (SVG)
+                </button>
+              )}
               <button
                 disabled={busy}
                 title={t('Yalnız SMD pad\'ler — lazer/vinil stencil kesimi için')}
@@ -730,11 +783,15 @@ export function ExportDialog() {
                     if (top) files.push({ name: `${base}-ust.png`, content: top })
                     const topSilk = await silkLayerPngBlob(project, getFootprint, 'top')
                     if (topSilk) files.push({ name: `${base}-ust-silk.png`, content: topSilk })
+                    const topStack = await sideStackPngBlob(project, getFootprint, 'top')
+                    if (topStack) files.push({ name: `${base}-ust-yigin.png`, content: topStack })
                     if (!singleLayer) {
                       const bottom = await layerPngBlob(project, getFootprint, 'bottom', { mirror: true })
                       if (bottom) files.push({ name: `${base}-alt-aynali.png`, content: bottom })
                       const bottomSilk = await silkLayerPngBlob(project, getFootprint, 'bottom')
                       if (bottomSilk) files.push({ name: `${base}-alt-silk.png`, content: bottomSilk })
+                      const bottomStack = await sideStackPngBlob(project, getFootprint, 'bottom')
+                      if (bottomStack) files.push({ name: `${base}-alt-yigin.png`, content: bottomStack })
                     }
                     const sema = await schematicPngBlob(project, getFootprint)
                     if (sema) files.push({ name: `${base}-sema.png`, content: sema })
@@ -782,6 +839,26 @@ export function ExportDialog() {
                   }
                 >
                   ▼ {t('Alt bakır — aynalı (S/B üretim)')}
+                </button>
+              )}
+              <button
+                disabled={busy}
+                title={t('Üst bakır + üst bakır alanları + delikler + kart sınırı + üst silk + üst görseller — tam koyu S/B tek katman')}
+                onClick={() =>
+                  run(t('Üst yığın PNG'), () => exportSideStackPng(project, getFootprint, 'top'))
+                }
+              >
+                ▲ {t('Üst yığın — bakır+alan+delik+sınır (S/B)')}
+              </button>
+              {!singleLayer && (
+                <button
+                  disabled={busy}
+                  title={t('Alt bakır + alt bakır alanları + delikler + kart sınırı + alt silk + alt görseller — tam koyu S/B tek katman')}
+                  onClick={() =>
+                    run(t('Alt yığın PNG'), () => exportSideStackPng(project, getFootprint, 'bottom'))
+                  }
+                >
+                  ▼ {t('Alt yığın — bakır+alan+delik+sınır (S/B)')}
                 </button>
               )}
               <button

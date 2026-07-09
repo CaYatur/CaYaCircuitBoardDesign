@@ -36,7 +36,14 @@ export interface CayaNative {
   }): Promise<{ path?: string; canceled?: boolean; error?: string }>
   exportToDir(a: {
     files: { name: string; content: string | Uint8Array }[]
-  }): Promise<{ dir?: string; count?: number; canceled?: boolean; error?: string }>
+  }): Promise<{
+    dir?: string
+    count?: number
+    /** Klasöre yazılamayan dosyalar (kilitli/açık dosya, izin vb.) — toplu aktarım bunlar için yarıda kesilmez */
+    failed?: { name: string; error: string }[]
+    canceled?: boolean
+    error?: string
+  }>
   isDesktop: boolean
 }
 

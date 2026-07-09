@@ -243,6 +243,97 @@ export async function outlineTracesPngBlob(
   return new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
 }
 
+/** TEK YÜZ üretim yığını PNG'sini indir (üst/alt bakır + alanlar + delikler + kart sınırı + silk + görseller) */
+export async function exportSideStackPng(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  side: CopperLayer,
+  pxPerMm = 24
+): Promise<void> {
+  const blob = await sideStackPngBlob(project, getFootprint, side, pxPerMm)
+  if (blob) downloadBlob(`${project.name}-${side === 'top' ? 'ust' : 'alt'}-yigin.png`, blob)
+}
+
+/**
+ * TEK YÜZ üretim yığını: belirtilen yüzün bakırı (izler+pad'ler+vialar) + o
+ * yüzün bakır alanları (tam opak) + tüm delikler + kart sınırı + o yüzün
+ * silkscreen'i (yazılar/refDes/silk pin adları) + o yüze yerleştirilmiş
+ * SVG/PNG görseller — tek katmanda siyah-beyaz PNG olarak.
+ */
+export async function sideStackPngBlob(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  side: CopperLayer,
+  pxPerMm = 24
+): Promise<Blob | null> {
+  const w = Math.ceil(project.board.width * pxPerMm)
+  const h = Math.ceil(project.board.height * pxPerMm)
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, h)
+  ctx.scale(pxPerMm, pxPerMm)
+  const strokeW = project.board.outlineWidth ?? 0.3
+
+  // Bakır (alanlar + izler/pad/via) — tam opak siyah
+  const geo = copperLayerGeometry(project, getFootprint, side)
+  for (const z of geo.zones) drawRegion(ctx, z, '#000000')
+  drawPrimitives(ctx, geo.copper, '#000000')
+
+  // O yüze yerleştirilmiş görseller
+  const silkLayer = side === 'top' ? 'top-silk' : 'bottom-silk'
+  for (const im of project.images) {
+    if (im.layer !== silkLayer) continue
+    const el = await loadImageEl(im.src)
+    if (!el) continue
+    ctx.save()
+    ctx.globalAlpha = im.opacity ?? 1
+    ctx.translate(im.x + im.width / 2, im.y + im.height / 2)
+    if (im.rotation) ctx.rotate((im.rotation * Math.PI) / 180)
+    if (im.mirror) ctx.scale(-1, 1)
+    ctx.drawImage(el, -im.width / 2, -im.height / 2, im.width, im.height)
+    ctx.restore()
+  }
+  ctx.globalAlpha = 1
+
+  // Silkscreen (yazılar + refDes + silk pin adları) — siyah
+  drawPrimitives(ctx, silkLayerGeometry(project, getFootprint, side), '#000000')
+
+  // Kart dış hattı — yalnız dış kenar
+  ctx.strokeStyle = '#000000'
+  ctx.lineJoin = 'round'
+  ctx.lineWidth = strokeW
+  const outline = outlinePoints(project)
+  ctx.beginPath()
+  ctx.moveTo(outline[0].x, outline[0].y)
+  for (const p of outline.slice(1)) ctx.lineTo(p.x, p.y)
+  ctx.closePath()
+  ctx.stroke()
+  for (const cut of project.board.cutouts ?? []) {
+    const cp = cutoutOutlinePoints(cut)
+    if (cp.length < 2) continue
+    ctx.beginPath()
+    ctx.moveTo(cp[0].x, cp[0].y)
+    for (const p of cp.slice(1)) ctx.lineTo(p.x, p.y)
+    ctx.closePath()
+    ctx.stroke()
+  }
+
+  // Delikler — beyaz oyuk + ince siyah çeper
+  for (const dr of allDrills(project, getFootprint)) {
+    ctx.beginPath()
+    ctx.arc(dr.x, dr.y, dr.diameter / 2, 0, Math.PI * 2)
+    ctx.fillStyle = '#ffffff'
+    ctx.fill()
+    ctx.lineWidth = strokeW * 0.5
+    ctx.stroke()
+  }
+
+  return new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+}
+
 /** Tek katman silkscreen PNG'sini indir (siyah üstüne beyaz zemin) */
 export async function exportSilkLayerPng(
   project: Project,
@@ -379,7 +470,7 @@ export async function customExportPngBlob(
     if (!on && !layers.zones) continue
     const geo = copperLayerGeometry(project, getFootprint, side)
     if (layers.zones) {
-      ctx.globalAlpha = 0.55
+      ctx.globalAlpha = blackWhite ? 1 : 0.55
       for (const z of geo.zones) drawRegion(ctx, z, zoneColor)
       ctx.globalAlpha = 1
     }

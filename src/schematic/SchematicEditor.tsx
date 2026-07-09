@@ -9,6 +9,7 @@ import { uid } from '../types'
 import { segPointDist } from '../core/geometry'
 import {
   SCH_GRID,
+  danglingWireIds,
   ensureSymbols,
   junctionPoints,
   orthoCorner,
@@ -39,6 +40,7 @@ const C = {
   pinName: '#a9b6c4',
   refDes: '#e8d44d',
   wire: '#7ee787',
+  wireDangling: '#ff3860',
   netLabel: '#ffb347',
   selection: '#3fd3dc',
   junction: '#7ee787'
@@ -333,9 +335,10 @@ export function SchematicEditor() {
       return null
     }
 
-    // Teller
+    // Teller — bağlantısız (asılı) uçlu teller uyarı rengiyle çizilir
+    const dangling = danglingWireIds(project, getFootprint)
     for (const w of project.schematic.wires) {
-      ctx.strokeStyle = C.wire
+      ctx.strokeStyle = dangling.has(w.id) ? C.wireDangling : C.wire
       ctx.lineWidth = selectedWire === w.id ? px(3.5) : px(2)
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'

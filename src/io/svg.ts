@@ -2,7 +2,7 @@
 // Lazer kesim, toner transfer ve dokümantasyon için katman bazlı SVG.
 // Boyutlar gerçek mm cinsindendir (width/height mm birimli).
 
-import type { CopperLayer, Footprint, Project, VisibleLayer } from '../types'
+import type { CopperLayer, Footprint, ImageItem, Project, VisibleLayer } from '../types'
 import {
   copperLayerGeometry,
   layerPads,
@@ -312,6 +312,68 @@ export function svgOutlineTraces(
   return svgDoc(w, h, parts.join('\n'))
 }
 
+/** Bir görseli (SVG/PNG data URL) <image> öğesi olarak yerleştirir (konum/döndürme/ayna/opaklık) */
+function imageSvg(im: ImageItem): string {
+  const cx = im.x + im.width / 2
+  const cy = im.y + im.height / 2
+  const t: string[] = [`translate(${cx.toFixed(4)},${cy.toFixed(4)})`]
+  if (im.rotation) t.push(`rotate(${im.rotation})`)
+  if (im.mirror) t.push('scale(-1,1)')
+  return `<g transform="${t.join(' ')}" opacity="${im.opacity ?? 1}"><image href="${im.src}" x="${(-im.width / 2).toFixed(4)}" y="${(-im.height / 2).toFixed(4)}" width="${im.width.toFixed(4)}" height="${im.height.toFixed(4)}" preserveAspectRatio="none"/></g>`
+}
+
+/**
+ * TEK YÜZ üretim yığını (issue: hızlı üst<->alt aktarım modları): belirtilen
+ * yüzün bakırı (izler + pad'ler + vialar) + o yüzün bakır alanları (dolgu) +
+ * tüm delikler + kart sınırı + o yüzün silkscreen'i (yazılar, refDes, silk pin
+ * adları) + o yüze yerleştirilmiş SVG/PNG görseller — TEK bir katmanda, tam
+ * koyu (opak) siyah-beyaz çıktı. Karşı yüzün hiçbir öğesi dahil edilmez.
+ */
+export function svgSideStack(
+  project: Project,
+  getFootprint: (id: string) => Footprint | undefined,
+  side: CopperLayer
+): string {
+  const w = project.board.width
+  const h = project.board.height
+  const strokeW = project.board.outlineWidth ?? 0.3
+  const parts: string[] = [`<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>`]
+
+  // Bakır (alanlar + izler/pad/via) — tam opak siyah
+  const geo = copperLayerGeometry(project, getFootprint, side)
+  for (const z of geo.zones) parts.push(regionSvg(z, '#000000'))
+  for (const item of geo.copper) parts.push(primitiveSvg(item, '#000000'))
+
+  // O yüze yerleştirilmiş görseller (logo/işaret vb.)
+  const silkLayer = side === 'top' ? 'top-silk' : 'bottom-silk'
+  for (const im of project.images) {
+    if (im.layer !== silkLayer) continue
+    parts.push(imageSvg(im))
+  }
+
+  // Silkscreen (yazılar + refDes + silk pin adları) — siyah
+  for (const s of silkLayerGeometry(project, getFootprint, side)) {
+    parts.push(primitiveSvg(s, '#000000'))
+  }
+
+  // Kart dış çerçevesi + iç kesimler
+  const pts = outlinePoints(project)
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ') + ' Z'
+  parts.push(`<path d="${d}" fill="none" stroke="#000000" stroke-width="${strokeW.toFixed(4)}" stroke-linejoin="round"/>`)
+  for (const cut of project.board.cutouts ?? []) {
+    parts.push(`<path d="${cutoutPathD(cut)}" fill="none" stroke="#000000" stroke-width="${strokeW.toFixed(4)}"/>`)
+  }
+
+  // Delikler — beyaz oyuk + ince siyah çeper
+  for (const dr of allDrills(project, getFootprint)) {
+    parts.push(
+      `<circle cx="${dr.x.toFixed(4)}" cy="${dr.y.toFixed(4)}" r="${(dr.diameter / 2).toFixed(4)}" fill="#ffffff" stroke="#000000" stroke-width="${(strokeW * 0.5).toFixed(4)}"/>`
+    )
+  }
+
+  return svgDoc(w, h, parts.join('\n'))
+}
+
 /**
  * TAM KART dışa aktarımı: kart dış çerçevesi + iç kesimler + her iki bakır
  * katman (izler + pad'ler + vialar + alanlar) + delikler + silkscreen yazılar
@@ -341,7 +403,7 @@ export function svgFullBoard(
     const geo = copperLayerGeometry(project, getFootprint, layer)
     parts.push(`<g>`)
     for (const z of geo.zones) {
-      parts.push(regionSvg(z, color, 0.35))
+      parts.push(regionSvg(z, color))
     }
     for (const item of geo.copper) parts.push(primitiveSvg(item, color))
     parts.push('</g>')
@@ -401,7 +463,7 @@ export function svgCustomExport(
     if (!on && !layers.zones) continue
     const geo = copperLayerGeometry(project, getFootprint, side)
     if (layers.zones) {
-      for (const z of geo.zones) parts.push(regionSvg(z, zoneColor, 0.55))
+      for (const z of geo.zones) parts.push(regionSvg(z, zoneColor, blackWhite ? undefined : 0.55))
     }
     if (on) {
       for (const item of geo.copper) parts.push(primitiveSvg(item, color))

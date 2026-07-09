@@ -164,6 +164,9 @@ ipcMain.handle('caya:exportFile', async (e, { defaultName, content, ext }) => {
 })
 
 // Çok dosyayı seçilen bir klasöre yaz (Gerber seti, tüm SVG'ler vb.)
+// Her dosya AYRI try/catch ile yazılır: biri (kilitli/açık dosya, izin vb.
+// nedenle) başarısız olsa da geri kalanlar yazılmaya devam eder — tek bir
+// dosya hatası tüm toplu aktarımı sessizce yarıda kesmesin.
 ipcMain.handle('caya:exportToDir', async (e, { files }) => {
   try {
     const state = readAppState()
@@ -175,12 +178,17 @@ ipcMain.handle('caya:exportToDir', async (e, { files }) => {
     })
     if (res.canceled || !res.filePaths || res.filePaths.length === 0) return { canceled: true }
     const dir = res.filePaths[0]
+    const failed = []
     for (const f of files) {
-      const buf = typeof f.content === 'string' ? f.content : Buffer.from(f.content)
-      fs.writeFileSync(path.join(dir, f.name), buf)
+      try {
+        const buf = typeof f.content === 'string' ? f.content : Buffer.from(f.content)
+        fs.writeFileSync(path.join(dir, f.name), buf)
+      } catch (err) {
+        failed.push({ name: f.name, error: String(err && err.message ? err.message : err) })
+      }
     }
     writeAppState({ ...state, lastExportDir: dir })
-    return { dir, count: files.length }
+    return { dir, count: files.length - failed.length, failed }
   } catch (err) {
     return { error: String(err && err.message ? err.message : err) }
   }
