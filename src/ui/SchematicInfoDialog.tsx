@@ -4,7 +4,7 @@
 // Değişiklikler anında hem ekranda hem SVG/PNG dışa aktarımında görünür.
 
 import { useStore } from '../state/store'
-import { defaultTitleBlock, type TitleBlock } from '../types'
+import { defaultTitleBlock, STANDARD_SHEET_SIZES, type TitleBlock } from '../types'
 import { useT } from '../i18n'
 import { Icon } from './Icon'
 
@@ -33,6 +33,8 @@ export function SchematicInfoDialog() {
     </label>
   )
 
+  const sizePreset = tb.sizeMode === 'auto' ? 'auto' : (tb.size in STANDARD_SHEET_SIZES ? tb.size : 'custom')
+
   return (
     <div className="modal-backdrop" onMouseDown={() => openDialog(null)}>
       <div className="modal schematic-info-modal" onMouseDown={(e) => e.stopPropagation()}>
@@ -58,8 +60,53 @@ export function SchematicInfoDialog() {
           {field(t('Revizyon'), 'revision')}
           {field(t('Tarih'), 'date')}
           {field(t('Sayfa'), 'sheet', '1/1')}
-          {field(t('Boyut'), 'size', 'A4')}
+          <label className="field">
+            <span>{t('Kağıt Boyutu')}</span>
+            <select
+              value={sizePreset}
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === 'auto') {
+                  set({ sizeMode: 'auto', size: '' })
+                } else if (v === 'custom') {
+                  set({ sizeMode: 'fixed', size: 'Custom' })
+                } else {
+                  const preset = STANDARD_SHEET_SIZES[v]
+                  set({ sizeMode: 'fixed', size: v, pageWidth: preset.w, pageHeight: preset.h })
+                }
+              }}
+            >
+              <option value="auto">{t('Otomatik (İçeriğe Sığdır)')}</option>
+              {Object.keys(STANDARD_SHEET_SIZES).map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+              <option value="custom">{t('Özel')}</option>
+            </select>
+          </label>
         </div>
+
+        {tb.sizeMode === 'fixed' && (
+          <div className="schematic-info-grid">
+            <label className="field">
+              <span>{t('Genişlik (mm)')}</span>
+              <input
+                type="number"
+                min={20}
+                value={tb.pageWidth}
+                onChange={(e) => set({ pageWidth: Math.max(20, Number(e.target.value) || 0), size: 'Custom' })}
+              />
+            </label>
+            <label className="field">
+              <span>{t('Yükseklik (mm)')}</span>
+              <input
+                type="number"
+                min={20}
+                value={tb.pageHeight}
+                onChange={(e) => set({ pageHeight: Math.max(20, Number(e.target.value) || 0), size: 'Custom' })}
+              />
+            </label>
+          </div>
+        )}
 
         <label className="field">
           <span>{t('Açıklamalar / Notlar')}</span>

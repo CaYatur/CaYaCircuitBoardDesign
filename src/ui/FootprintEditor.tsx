@@ -200,6 +200,22 @@ export function FootprintEditor() {
     setBodyH(sn.bodyH)
   }
 
+  // ── Kaydedilmemiş değişiklik takibi (panel kapatılırken uyarmak için) ──
+  // baselineRef = son yükleme/sıfırlama/kayıt anındaki durum; her render'da
+  // güncel duruma karşılaştırılır. baselineTick, yükleme/sıfırlama/kayıttan
+  // sonra render'ın GÜNCEL state'i baseline'a yazması için tetikleyici.
+  const dirtySnap = JSON.stringify({
+    name, category, description, pads, silk, bodyOutline, symbolDef, model3d, bodyW, bodyH
+  })
+  const baselineRef = useRef<string | null>(null)
+  const [baselineTick, setBaselineTick] = useState(0)
+  useEffect(() => {
+    baselineRef.current = dirtySnap
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baselineTick])
+  const isDirty = baselineRef.current !== null && baselineRef.current !== dirtySnap
+  const [closeConfirm, setCloseConfirm] = useState(false)
+
   useEffect(() => {
     if (activeDialog !== 'footprint-editor') return
     const onKey = (e: KeyboardEvent) => {
@@ -249,6 +265,7 @@ export function FootprintEditor() {
         ? t('Yerleşik "{name}" kopyalanıyor — kaydedince Özel kategorisine eklenir', { name: fp.name })
         : ''
     )
+    setBaselineTick((v) => v + 1)
   }
 
   // Dışarıdan hedefle açıldıysa yükle (builtin → kopya, custom → yerinde düzenle)
@@ -279,6 +296,7 @@ export function FootprintEditor() {
     setModel3d(null)
     setSourceNote('')
     setTab('pcb')
+    setBaselineTick((v) => v + 1)
   }
 
   const updatePad = (i: number, patch: Partial<PadDef>) => {
@@ -309,10 +327,11 @@ export function FootprintEditor() {
     setBodyOutline(null)
   }
 
-  const save = () => {
+  /** Footprint'i kaydeder; kayıt gerçekleşirse true döner (validasyon başarısızsa false) */
+  const save = (): boolean => {
     if (pads.length === 0) {
       setStatus(t('En az bir pad gerekli'))
-      return
+      return false
     }
     const hasOutline = !!bodyOutline && bodyOutline.length >= 2
     // Silkscreen: dış hat çizgileri (varsa) + kullanıcının çizdiği öğeler;
@@ -372,6 +391,7 @@ export function FootprintEditor() {
     setSymbolDef(sym)
     setSourceNote('')
     setSavedFlash(true)
+    setBaselineTick((v) => v + 1)
     setTimeout(() => setSavedFlash(false), 1600)
     if (warn && warn.removed > 0) {
       setStatus(
@@ -395,10 +415,21 @@ export function FootprintEditor() {
         })
       )
     }
+    return true
+  }
+
+  /** X ile kapatma: kaydedilmemiş değişiklik varsa önce sorar */
+  const requestClose = () => {
+    if (isDirty) {
+      setCloseConfirm(true)
+      return
+    }
+    openDialog(null)
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={() => openDialog(null)}>
+    <>
+    <div className="modal-backdrop">
       <div
         className={'modal footprint-modal' + (maximized ? ' is-full' : '')}
         onMouseDown={(e) => e.stopPropagation()}
@@ -421,7 +452,7 @@ export function FootprintEditor() {
             >
               <Icon name={maximized ? 'fullscreenExit' : 'fullscreen'} size={15} />
             </button>
-            <button onClick={() => openDialog(null)}><Icon name="close" size={14} /></button>
+            <button onClick={requestClose} title={t('Kapat')}><Icon name="close" size={14} /></button>
           </div>
         </div>
 
@@ -709,6 +740,34 @@ export function FootprintEditor() {
         </div>
       </div>
     </div>
+    {closeConfirm && (
+      <div className="modal-backdrop fp-close-confirm-backdrop" onMouseDown={() => setCloseConfirm(false)}>
+        <div className="modal prompt-modal confirm-modal" onMouseDown={(e) => e.stopPropagation()}>
+          <h3>{t('Kaydedilmemiş değişiklikler var')}</h3>
+          <p className="confirm-message">
+            {t('Bu footprint\'te kaydedilmemiş değişiklikler var. Kapatmadan önce kaydetmek ister misiniz?')}
+          </p>
+          <div className="modal-buttons">
+            <button className="btn-secondary" onClick={() => setCloseConfirm(false)}>
+              {t('İptal')}
+            </button>
+            <button
+              className="btn-secondary btn-danger-outline"
+              onClick={() => { setCloseConfirm(false); openDialog(null) }}
+            >
+              {t('Kaydetmeden Kapat')}
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => { if (save()) { setCloseConfirm(false); openDialog(null) } }}
+            >
+              {t('Kaydet ve Kapat')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
@@ -1406,7 +1465,7 @@ function FpCanvas({
           <Icon name="fullscreen" size={13} /> {t('Sığdır')}
         </button>
         <label className="fp-snap-toggle" title={t('Izgaraya yasla (Shift: serbest)')}>
-          <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> {t('Izgara')}
+          <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> {t('Izgaraya Yasla')}
         </label>
       </div>
       <canvas

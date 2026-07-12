@@ -573,8 +573,14 @@ export interface TitleBlock {
   date: string
   /** Sayfa (örn. "1/1") */
   sheet: string
-  /** Sayfa boyutu etiketi (A4/A3/Letter...) — yalnız bilgi amaçlı */
+  /** Sayfa boyutu etiketi (A4/A3/Letter...) — yalnız bilgi amaçlı (etikette gösterilir) */
   size: string
+  /** Çerçeve boyutlandırma modu: 'auto' = içeriğe göre otomatik sığdır (eski davranış), 'fixed' = pageWidth/pageHeight sabit boyutu kullan */
+  sizeMode: 'auto' | 'fixed'
+  /** Sabit sayfa genişliği (mm) — sizeMode:'fixed' iken kullanılır */
+  pageWidth: number
+  /** Sabit sayfa yüksekliği (mm) — sizeMode:'fixed' iken kullanılır */
+  pageHeight: number
   /** Serbest açıklama notları (çok satırlı) */
   notes: string
 }
@@ -589,8 +595,21 @@ export const defaultTitleBlock = (): TitleBlock => ({
   date: new Date().toISOString().slice(0, 10),
   sheet: '1/1',
   size: 'A4',
+  sizeMode: 'auto',
+  pageWidth: 297,
+  pageHeight: 210,
   notes: ''
 })
+
+/** Standart kağıt boyutları (mm, yatay/landscape) — Şema Bilgileri diyaloğunda seçilir */
+export const STANDARD_SHEET_SIZES: Record<string, { w: number; h: number }> = {
+  A4: { w: 297, h: 210 },
+  A3: { w: 420, h: 297 },
+  A2: { w: 594, h: 420 },
+  A1: { w: 841, h: 594 },
+  Letter: { w: 279.4, h: 215.9 },
+  Legal: { w: 355.6, h: 215.9 }
+}
 
 export interface SchematicData {
   symbols: SchematicSymbol[]

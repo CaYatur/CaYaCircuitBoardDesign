@@ -86,8 +86,10 @@ export function buildSheet(
   const M = 6
   const frameX = b.minX - M
   const frameY = b.minY - M
-  const frameW = Math.max(b.width + 2 * M, BLOCK_W + 2 * M)
-  const frameH = b.height + 2 * M + BLOCK_H + 3
+  const minW = BLOCK_W + 2 * M
+  const minH = BLOCK_H + 2 * M + 3
+  const frameW = tb.sizeMode === 'fixed' ? Math.max(tb.pageWidth, minW) : Math.max(b.width + 2 * M, minW)
+  const frameH = tb.sizeMode === 'fixed' ? Math.max(tb.pageHeight, minH) : b.height + 2 * M + BLOCK_H + 3
   const frame = { x: frameX, y: frameY, w: frameW, h: frameH }
   const block = { x: frameX + frameW - BLOCK_W, y: frameY + frameH - BLOCK_H, w: BLOCK_W, h: BLOCK_H }
 
