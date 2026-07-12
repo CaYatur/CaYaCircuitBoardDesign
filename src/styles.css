@@ -682,6 +682,23 @@ select option {
   white-space: nowrap;
 }
 
+.status-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.status-unit select {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
 .status-chip.layer-top {
   color: #ff8a7a;
 }
@@ -1047,6 +1064,95 @@ select option {
 /* ─── Footprint editörü ─── */
 .footprint-modal {
   width: 940px;
+}
+
+/* Tam ekran (büyütülmüş) footprint editörü — çizim alanı ekranı kaplar */
+.footprint-modal.is-full {
+  width: 96vw;
+  max-width: 96vw;
+  height: 94vh;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.footprint-modal.is-full .footprint-layout {
+  flex: 1;
+  min-height: 0;
+  align-items: flex-start;
+}
+
+.footprint-modal.is-full .footprint-form {
+  flex: 0 0 420px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.footprint-modal.is-full .footprint-side {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Şema bilgileri (başlık bloğu) penceresi ── */
+.schematic-info-modal {
+  width: 520px;
+  max-width: 94vw;
+}
+
+.schematic-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  margin: 10px 0;
+}
+
+.schematic-info-modal .field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.schematic-info-modal .field > span {
+  color: var(--text-dim);
+}
+
+.schematic-info-modal .field input,
+.schematic-info-modal .field textarea {
+  background: var(--bg-input, #0e1116);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 5px 7px;
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.schematic-info-modal .field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.schematic-info-modal .field-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.schematic-info-modal .field-check input {
+  width: auto;
+}
+
+.modal-header-actions button.active {
+  color: var(--accent);
 }
 
 .footprint-layout {
@@ -1781,7 +1887,7 @@ select option {
 }
 .home-action:hover { border-color: var(--accent); transform: translateY(-1px); }
 .home-action-primary { border-color: var(--accent); }
-.home-action-icon { font-size: 22px; }
+.home-action-icon { font-size: 22px; color: #fff; }
 .home-action-title { font-size: 15px; font-weight: 600; color: var(--text); }
 .home-action-desc { font-size: 11px; color: var(--text-dim); }
 .home-recents { margin-bottom: 16px; }
@@ -2539,6 +2645,19 @@ select option {
 .fp-props b {
   color: var(--accent);
   font-weight: 600;
+}
+
+.fp-props-sep {
+  color: #d4af37;
+  font-weight: 600;
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+}
+
+.fp-props .fp-hole-reset {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
 }
 
 .fp-props label {

@@ -3,7 +3,7 @@
 // bazlı geometri ilkelleri (stroke / flash / region).
 
 import type { CopperLayer, Footprint, Point, Project } from '../types'
-import { localToWorld, padWorldPos, padWorldSize, transformArcAngles } from '../core/geometry'
+import { localToWorld, padWorldPos, padDrillWorldPos, padWorldSize, transformArcAngles } from '../core/geometry'
 import { polygonOutlinePoints } from '../core/boardGeometry'
 import { placeText } from '../render/vectorFont'
 import { pinSilkLabels } from '../core/pinSilk'
@@ -350,7 +350,7 @@ export function allDrills(
     if (!fp) continue
     for (const pad of fp.pads) {
       if (!pad.drill) continue
-      const pos = padWorldPos(comp, pad)
+      const pos = padDrillWorldPos(comp, pad)
       drills.push({ x: pos.x, y: pos.y, diameter: pad.drill })
     }
   }

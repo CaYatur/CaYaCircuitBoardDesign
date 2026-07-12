@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 const QUICK_NETS = ['GND', 'VCC', '5V', '3V3', '12V', 'VIN']
 
@@ -51,10 +52,10 @@ export function PinEditorDialog() {
       <div className="modal pin-editor-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>
-            ⚡ {t('Pin / Net Editörü')} — {comp.refDes}{' '}
+            <Icon name="net" size={15} /> {t('Pin / Net Editörü')} — {comp.refDes}{' '}
             <small>({fp.name})</small>
           </h3>
-          <button onClick={close}>✕</button>
+          <button onClick={close}><Icon name="close" size={14} /></button>
         </div>
 
         <div className="pin-editor-tools">
@@ -142,7 +143,7 @@ export function PinEditorDialog() {
             {t('İptal')}
           </button>
           <button className="btn-primary" onClick={apply}>
-            ✓ {t('Uygula')}
+            <Icon name="check" size={13} /> {t('Uygula')}
           </button>
         </div>
       </div>

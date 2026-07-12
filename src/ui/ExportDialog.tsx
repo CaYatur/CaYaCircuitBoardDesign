@@ -57,6 +57,7 @@ import {
 } from '../io/schematicImage'
 import { saveProjectFile } from '../io/project'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 type Section = 'gerber' | 'svg' | 'gcode' | 'png' | 'docs' | 'custom'
 
@@ -150,7 +151,7 @@ export function ExportDialog() {
       <div className="modal export-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>⇩ {t('Dışa Aktar')} — {project.name}</h3>
-          <button onClick={() => openDialog(null)}>✕</button>
+          <button onClick={() => openDialog(null)}><Icon name="close" size={14} /></button>
         </div>
 
         <div className="tabs">
@@ -261,7 +262,7 @@ export function ExportDialog() {
                   })
                 }
               >
-                📦 {t('Tüm Gerber Setini Tek Klasöre Aktar ({n} dosya)', { n: (singleLayer ? 5 : 9) + 2 })}
+                <Icon name="folder" size={14} /> {t('Tüm Gerber Setini Tek Klasöre Aktar ({n} dosya)', { n: (singleLayer ? 5 : 9) + 2 })}
               </button>
             </div>
             <h4>{t('Ayrı dosyalar')}:</h4>
@@ -313,7 +314,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                📐 {t('DXF — dış hat + delikler')}
+                <Icon name="ruler" size={14} /> {t('DXF — dış hat + delikler')}
               </button>
             </div>
           </div>
@@ -427,7 +428,7 @@ export function ExportDialog() {
                   })
                 }
               >
-                📦 {t('Tüm SVG\'leri Tek Klasöre Aktar')}
+                <Icon name="folder" size={14} /> {t('Tüm SVG\'leri Tek Klasöre Aktar')}
               </button>
             </div>
             <div className="export-buttons">
@@ -498,7 +499,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                ✂ {t('Kesim hattı — lazer')} (SVG)
+                <Icon name="cut" size={14} /> {t('Kesim hattı — lazer')} (SVG)
               </button>
               <button
                 disabled={busy}
@@ -512,7 +513,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                🎨 {t('Birleşik görünüm')} (SVG)
+                <Icon name="palette" size={14} /> {t('Birleşik görünüm')} (SVG)
               </button>
               <button
                 disabled={busy}
@@ -526,7 +527,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                🖊 {t('Kart dış hattı + yollar (S/B)')} (SVG)
+                <Icon name="pen" size={14} /> {t('Kart dış hattı + yollar (S/B)')} (SVG)
               </button>
               <button
                 disabled={busy}
@@ -541,7 +542,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                🗺 {t('Tam Kart — her şey dahil')} (SVG)
+                <Icon name="map" size={14} /> {t('Tam Kart — her şey dahil')} (SVG)
               </button>
               <button
                 disabled={busy}
@@ -588,7 +589,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                🩹 {t('Üst lehim pastası — stencil')} (SVG)
+                <Icon name="patch" size={14} /> {t('Üst lehim pastası — stencil')} (SVG)
               </button>
               <button
                 disabled={busy}
@@ -618,7 +619,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                🧩 {t('Üst montaj çizimi')} (SVG)
+                <Icon name="puzzle" size={14} /> {t('Üst montaj çizimi')} (SVG)
               </button>
               {!singleLayer && (
                 <button
@@ -634,7 +635,7 @@ export function ExportDialog() {
                     )
                   }
                 >
-                  🧩 {t('Alt montaj çizimi')} (SVG)
+                  <Icon name="puzzle" size={14} /> {t('Alt montaj çizimi')} (SVG)
                 </button>
               )}
               <button
@@ -700,7 +701,7 @@ export function ExportDialog() {
                   })
                 }
               >
-                📦 {t('Tüm G-code Dosyalarını Tek Klasöre Aktar')}
+                <Icon name="folder" size={14} /> {t('Tüm G-code Dosyalarını Tek Klasöre Aktar')}
               </button>
             </div>
             <div className="export-buttons">
@@ -756,7 +757,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                ✂ {t('Kart kesimi')} (.nc)
+                <Icon name="cut" size={14} /> {t('Kart kesimi')} (.nc)
               </button>
             </div>
             <p className="calc-note">
@@ -799,7 +800,7 @@ export function ExportDialog() {
                   })
                 }
               >
-                📦 {t('Tüm PNG\'leri Tek Klasöre Aktar')}
+                <Icon name="folder" size={14} /> {t('Tüm PNG\'leri Tek Klasöre Aktar')}
               </button>
             </div>
             <div className="export-buttons">
@@ -809,7 +810,7 @@ export function ExportDialog() {
                   run(t('Birleşik PNG'), () => exportCompositePng(project, getFootprint))
                 }
               >
-                🎨 {t('Renkli birleşik görünüm')}
+                <Icon name="palette" size={14} /> {t('Renkli birleşik görünüm')}
               </button>
               <button
                 disabled={busy}
@@ -817,7 +818,7 @@ export function ExportDialog() {
                   run(t('Dış hat + yollar (S/B) PNG'), () => exportOutlineTracesPng(project, getFootprint))
                 }
               >
-                🖊 {t('Kart dış hattı + yollar (S/B)')}
+                <Icon name="pen" size={14} /> {t('Kart dış hattı + yollar (S/B)')}
               </button>
               <button
                 disabled={busy}
@@ -918,7 +919,7 @@ export function ExportDialog() {
                   ])
                 }
               >
-                📦 {t('Tümünü Tek Klasöre Aktar (BOM + Dizgi + Proje)')}
+                <Icon name="folder" size={14} /> {t('Tümünü Tek Klasöre Aktar (BOM + Dizgi + Proje)')}
               </button>
             </div>
             <div className="export-buttons">
@@ -930,7 +931,7 @@ export function ExportDialog() {
                   )
                 }
               >
-                📋 {t('Malzeme listesi (BOM .csv)')}
+                <Icon name="clipboard" size={14} /> {t('Malzeme listesi (BOM .csv)')}
               </button>
               <button
                 disabled={busy}
@@ -944,13 +945,13 @@ export function ExportDialog() {
                   )
                 }
               >
-                🤖 {t('Dizgi / Pick&Place (.csv)')}
+                <Icon name="robot" size={14} /> {t('Dizgi / Pick&Place (.csv)')}
               </button>
               <button
                 disabled={busy}
                 onClick={() => run(t('Proje'), () => saveProjectFile(project).then(() => {}))}
               >
-                💾 {t('Proje dosyası (.cayapcb)')}
+                <Icon name="save" size={14} /> {t('Proje dosyası (.cayapcb)')}
               </button>
             </div>
           </div>

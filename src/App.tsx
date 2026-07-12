@@ -20,6 +20,7 @@ import { BoardSettingsDialog } from './ui/BoardSettingsDialog'
 import { SettingsDialog } from './ui/SettingsDialog'
 import { AutorouteDialog } from './ui/AutorouteDialog'
 import { PinEditorDialog } from './ui/PinEditorDialog'
+import { SchematicInfoDialog } from './ui/SchematicInfoDialog'
 import { HomeScreen } from './ui/HomeScreen'
 import { PromptModal } from './ui/prompts'
 import { useStore } from './state/store'
@@ -111,6 +112,7 @@ export default function App() {
       <SettingsDialog />
       <AutorouteDialog />
       <PinEditorDialog />
+      <SchematicInfoDialog />
       <PromptModal />
       <HomeScreen />
     </div>

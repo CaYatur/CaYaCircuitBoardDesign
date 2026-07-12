@@ -16,6 +16,7 @@ import type { Airwire } from '../core/netlist'
 import {
   localToWorld,
   padWorldPos,
+  padDrillWorldPos,
   padWorldSize,
   componentBBox,
   transformArcAngles,
@@ -23,6 +24,7 @@ import {
 } from '../core/geometry'
 import { placeText } from './vectorFont'
 import { pinSilkLabels } from '../core/pinSilk'
+import { formatLen, unitSuffix } from '../core/units'
 import { getCachedImage } from './imageCache'
 import type { ZoneFillResult } from '../core/zoneFill'
 import {
@@ -500,7 +502,8 @@ export function render(ctx: CanvasRenderingContext2D, s: RenderState): void {
     const dx = s.measure.b.x - s.measure.a.x
     const dy = s.measure.b.y - s.measure.a.y
     const len = Math.hypot(dx, dy)
-    const label = `${len.toFixed(2)} mm  (Δx ${dx.toFixed(2)}, Δy ${dy.toFixed(2)})`
+    const u = s.project.settings.units ?? 'mm'
+    const label = `${formatLen(len, u)} ${unitSuffix(u)}  (Δx ${formatLen(dx, u)}, Δy ${formatLen(dy, u)})`
     ctx.font = '12px system-ui, sans-serif'
     const tw = ctx.measureText(label).width
     const mx = (a.x + b.x) / 2
@@ -786,7 +789,7 @@ function drawComponentThtPads(
     ctx.fillStyle = COLORS.padGold
     drawPadShape(ctx, s, comp, pad)
     if (pad.drill && s.visibleLayers.drill) {
-      const pos = worldToScreen(view, padWorldPos(comp, pad))
+      const pos = worldToScreen(view, padDrillWorldPos(comp, pad))
       ctx.beginPath()
       ctx.arc(pos.x, pos.y, (pad.drill / 2) * view.scale, 0, Math.PI * 2)
       ctx.fillStyle = COLORS.hole

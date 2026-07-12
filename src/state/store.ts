@@ -47,6 +47,7 @@ export type DialogId =
   | 'drc'
   | 'autoroute'
   | 'about'
+  | 'title-block'
   | null
 
 export type AppMode = 'pcb' | 'schematic' | 'board' | 'view3d'

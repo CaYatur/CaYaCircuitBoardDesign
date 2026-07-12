@@ -269,7 +269,7 @@ const en: Record<string, string> = {
 
   // ── Kütüphane ──
   'Komponent Kütüphanesi': 'Component Library',
-  '🔍 Ara: arduino, esp, direnç...': '🔍 Search: arduino, esp, resistor...',
+  'Ara: arduino, esp, direnç...': 'Search: arduino, esp, resistor...',
   'Kendi ölçülerinizle yeni komponent oluşturun': 'Create a component with your own dimensions',
   'Footprint kütüphanesi içe aktar (.cayalib)': 'Import footprint library (.cayalib)',
   'Özel footprint\'leri dışa aktar (.cayalib)': 'Export custom footprints (.cayalib)',
@@ -474,8 +474,8 @@ const en: Record<string, string> = {
   'Bakır ağırlığı': 'Copper weight',
   'Varsayılanlar': 'Defaults',
   'Via deliği': 'Via drill',
-  'İpucu: yüksek akım hatları için gereken genişliği Hesaplayıcılar\'dan (🧮) bulabilirsiniz.':
-    'Tip: find the width required for high-current traces in Calculators (🧮).',
+  'İpucu: yüksek akım hatları için gereken genişliği Hesaplayıcılar\'dan bulabilirsiniz.':
+    'Tip: find the width required for high-current traces in Calculators.',
 
   // ── Otorouter ──
   'Otomatik Rotalama': 'Automatic Routing',
@@ -1101,5 +1101,46 @@ const en: Record<string, string> = {
 
   // ── Yeni: toplu dışa aktarımda kısmi hata bildirimi ──
   '⚠ {n} dosya aktarıldı, {k} dosya yazılamadı (başka programda açık olabilir): {list}':
-    '⚠ {n} files exported, {k} files failed (may be open in another program): {list}'
+    '⚠ {n} files exported, {k} files failed (may be open in another program): {list}',
+
+  // ── Ölçü birimi (mm / mil / inç) ──
+  'Birim': 'Unit',
+  'Ölçü birimi (mm / mil / inç)': 'Measurement unit (mm / mil / inch)',
+
+  // ── Footprint editörü tam ekran ──
+  'Tam ekran (çizim alanını büyüt)': 'Fullscreen (enlarge drawing area)',
+  'Pencereyi küçült': 'Restore window',
+
+  // ── Footprint editörü: pad deliği (sarı akım halkası) konumu ──
+  'Delik (sarı akım halkası) konumu — pad içinde kaydırılır':
+    'Hole (gold ring) position — offset within the pad',
+  'Delik X kayması (pad içinde)': 'Hole X offset (within pad)',
+  'Delik Y kayması (pad içinde)': 'Hole Y offset (within pad)',
+  'Deliği pad merkezine getir': 'Center hole on pad',
+
+  // ── Şema bilgileri / başlık bloğu ──
+  'Şema Bilgileri': 'Schematic Info',
+  'Şema bilgileri / başlık bloğu (TITLE, REV, tarih, notlar)':
+    'Schematic info / title block (TITLE, REV, date, notes)',
+  'Şema Bilgileri (Başlık Bloğu)': 'Schematic Info (Title Block)',
+  'Başlık bloğunu ve sayfa çerçevesini göster': 'Show title block and sheet frame',
+  'Başlık': 'Title',
+  '(boşsa proje adı)': '(empty = project name)',
+  'Firma': 'Company',
+  'Tasarlayan': 'Designed by',
+  'Revize eden': 'Revised by',
+  'Revizyon': 'Revision',
+  'Tarih': 'Date',
+  'Sayfa': 'Sheet',
+  'Açıklamalar / Notlar': 'Notes / Description',
+  'Serbest notlar — her satır ayrı gösterilir (örn. VMAX=15V)':
+    'Free-text notes — each line shown separately (e.g. VMAX=15V)',
+
+  // ── Bakır alan: pad bağlantısı (ısı köprüsü / katı) ──
+  'Pad bağlantı biçimi': 'Pad connection style',
+  'Isı köprüsü (thermal)': 'Thermal relief',
+  'Katı dolgu (solid)': 'Solid fill',
+  'Köprü genişliği (mm)': 'Spoke width (mm)',
+  'Yalıtım boşluğu (mm)': 'Thermal gap (mm)',
+  'Köprü sayısı': 'Spoke count'
 }

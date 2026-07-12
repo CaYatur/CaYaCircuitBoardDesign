@@ -27,6 +27,12 @@ export interface PadDef {
   height: number
   /** Delik çapı (mm) — varsa through-hole pad */
   drill?: number
+  /** Sarı pad bakırının siyah delik merkezine göre kayması (mm). Varsayılan 0.
+   *  Pad'in x/y konumu deliği belirler; bu alan yalnızca sarı halkayı taşır.
+   *  Kısa devre/kenar dışına taşma riskine karşı editörde pad sınırlarına
+   *  kırpılır. */
+  holeDx?: number
+  holeDy?: number
   layer: PadLayer
   /** Pad adı etiketinin pad merkezine göre kayması (mm) — footprint editöründe
    *  ad, gövde çizgilerine binmesin diye taşınabilir (issue 11) */
@@ -308,6 +314,24 @@ export interface CopperZone {
   clearance: number
   /** THT pad/via'larda ısı yalıtım köprüsü (varsayılan açık) */
   thermalRelief?: boolean
+  /**
+   * Aynı netteki pad/via'nın alana bağlanma biçimi:
+   *  'thermal' = ısı yalıtım köprüleri (spoke/X) — lehimlemesi kolay (varsayılan)
+   *  'solid'   = doğrudan katı bakır dolgu (tam bağlantı, ısı yalıtımı yok)
+   */
+  connectStyle?: 'thermal' | 'solid'
+  /** Isı yalıtım halkasının (pad çevresi boşluk) genişliği (mm). Varsayılan 0.5 */
+  thermalGap?: number
+  /** Isı yalıtım köprüsü (spoke) genişliği (mm). Varsayılan otomatik (pad'e göre) */
+  spokeWidth?: number
+  /** Köprü (spoke) sayısı: 2 veya 4. Varsayılan 4 */
+  spokeCount?: 2 | 4
+  /**
+   * Köprü genişliğinin pad boyutuna göre otomatik küçültülmesini kapatır
+   * (gelişmiş). Kapalıyken girilen spokeWidth aynen kullanılır — kısa devre
+   * riskine karşı yabancı-net boşluğu yine de köprülerden sonra yeniden oyulur.
+   */
+  spokeUnclamped?: boolean
 }
 
 // ─── Kart ve proje ────────────────────────────────────────────────────────
@@ -409,6 +433,13 @@ export interface ConnectionFollowSettings {
 export type GridStyle = 'lines' | 'dots' | 'off'
 
 /**
+ * Ölçüm/gösterim birimi. Depolama HER ZAMAN milimetredir; bu ayar yalnızca
+ * ölçülerin ekranda gösterimini ve sayısal giriş yorumlamasını etkiler
+ * (mm ↔ mil ↔ inç dönüşümü). 1 inç = 25.4 mm = 1000 mil.
+ */
+export type MeasureUnit = 'mm' | 'mil' | 'inch'
+
+/**
  * Pad adı etiketlerinin görünümü (EDİTÖR üstü kaplama — silk pin etiketlerinden
  * ayrıdır):
  *  'off'        = pad adları yalnız pad içinde (yakınlaşınca) görünür (varsayılan)
@@ -422,6 +453,11 @@ export interface ProjectSettings {
   snapToGrid: boolean
   /** Izgara görünümü: çizgi ızgara (varsayılan), nokta ızgara veya kapalı */
   gridStyle: GridStyle
+  /**
+   * Ölçü gösterim birimi (mm / mil / inç). Depolama daima mm; bu yalnızca
+   * gösterim ve giriş yorumu içindir. (Varsayılan: 'mm')
+   */
+  units: MeasureUnit
   /** Pad adı etiketleri görünümü — EDİTÖR üstü kaplama (varsayılan: kapalı) */
   padLabelMode: PadLabelMode
   /**
@@ -514,9 +550,53 @@ export interface SchematicWire {
   net: string
 }
 
+/**
+ * Şema başlık bloğu (title block) — profesyonel devre şeması sayfasının
+ * sağ-alt köşesindeki bilgi kutusu: başlık, revizyon, tasarımcı, tarih, sayfa
+ * ve serbest açıklama notları. Sayfa çerçevesiyle birlikte hem ekranda hem
+ * SVG/PNG dışa aktarımında çizilir.
+ */
+export interface TitleBlock {
+  /** Başlık bloğu ve sayfa çerçevesi gösterilsin mi */
+  enabled: boolean
+  /** Proje/şema başlığı (boşsa proje adı kullanılır) */
+  title: string
+  /** Firma / kuruluş adı */
+  company: string
+  /** Tasarlayan (Design by) */
+  author: string
+  /** Revize eden (Revised by) */
+  revisedBy: string
+  /** Revizyon (REV) */
+  revision: string
+  /** Tarih (serbest metin, örn. 2026-07-12) */
+  date: string
+  /** Sayfa (örn. "1/1") */
+  sheet: string
+  /** Sayfa boyutu etiketi (A4/A3/Letter...) — yalnız bilgi amaçlı */
+  size: string
+  /** Serbest açıklama notları (çok satırlı) */
+  notes: string
+}
+
+export const defaultTitleBlock = (): TitleBlock => ({
+  enabled: true,
+  title: '',
+  company: 'CaYaDev',
+  author: '',
+  revisedBy: '',
+  revision: 'v1',
+  date: new Date().toISOString().slice(0, 10),
+  sheet: '1/1',
+  size: 'A4',
+  notes: ''
+})
+
 export interface SchematicData {
   symbols: SchematicSymbol[]
   wires: SchematicWire[]
+  /** Başlık bloğu (title block) — sayfa bilgileri; yoksa varsayılan üretilir */
+  titleBlock?: TitleBlock
   /**
    * Şema senkronunun EN SON yazdığı pin atamaları: "compId::pad" → net.
    * Tel silinip/taşınıp pin kopunca bayat atamayı güvenle temizlemek için
@@ -624,6 +704,7 @@ export const defaultSettings = (): ProjectSettings => ({
   gridSize: 1.27,
   snapToGrid: true,
   gridStyle: 'lines',
+  units: 'mm',
   padLabelMode: 'off',
   pinSilkLabels: true,
   pinSilkShowOnPad: true,
@@ -674,7 +755,7 @@ export const newProject = (name = 'Yeni Proje'): Project => ({
   customFootprints: [],
   rules: defaultRules(),
   settings: defaultSettings(),
-  schematic: { symbols: [], wires: [] }
+  schematic: { symbols: [], wires: [], titleBlock: defaultTitleBlock() }
 })
 
 let idCounter = 0

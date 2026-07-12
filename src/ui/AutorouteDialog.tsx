@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { useStore } from '../state/store'
 import { analyzeNets } from '../core/netlist'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 export function AutorouteDialog() {
   const activeDialog = useStore((s) => s.activeDialog)
@@ -44,8 +45,8 @@ export function AutorouteDialog() {
     <div className="modal-backdrop" onMouseDown={() => openDialog(null)}>
       <div className="modal autoroute-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>🤖 {t('Otomatik Rotalama')}</h3>
-          <button onClick={() => openDialog(null)}>✕</button>
+          <h3><Icon name="robot" size={16} /> {t('Otomatik Rotalama')}</h3>
+          <button onClick={() => openDialog(null)}><Icon name="close" size={14} /></button>
         </div>
         <div className="export-body">
           <p>
@@ -124,10 +125,10 @@ export function AutorouteDialog() {
           <div className="autoroute-status">
             {airwireCount > 0 ? (
               <span className="warn">
-                ⚡ {t('{n} eksik bağlantı rotalanmayı bekliyor', { n: airwireCount })}
+                <Icon name="net" size={13} /> {t('{n} eksik bağlantı rotalanmayı bekliyor', { n: airwireCount })}
               </span>
             ) : (
-              <span className="ok">✓ {t('Tüm net bağlantıları tamamlanmış görünüyor')}</span>
+              <span className="ok"><Icon name="check" size={13} /> {t('Tüm net bağlantıları tamamlanmış görünüyor')}</span>
             )}
           </div>
           <p className="calc-note">
@@ -139,7 +140,7 @@ export function AutorouteDialog() {
               disabled={running || airwireCount === 0}
               onClick={start}
             >
-              {running ? '⏳ ' + t('Rotalanıyor...') : '▶ ' + t('Rotalamayı Başlat')}
+              {running ? <><Icon name="hourglass" size={14} /> {t('Rotalanıyor...')}</> : <><Icon name="play" size={14} /> {t('Rotalamayı Başlat')}</>}
             </button>
           </div>
           {result && (

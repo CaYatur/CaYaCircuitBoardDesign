@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 export function NetPopover({
   x,
@@ -43,7 +44,7 @@ export function NetPopover({
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="net-popover-title">
-          ⚡ {refDes} · {t('pad')} {padName}
+          <Icon name="net" size={13} /> {refDes} · {t('pad')} {padName}
         </div>
         <input
           ref={inputRef}
@@ -71,7 +72,7 @@ export function NetPopover({
             {t('İptal')}
           </button>
           <button className="btn-primary" onClick={() => onApply(value)}>
-            ✓ {t('Uygula')}
+            <Icon name="check" size={13} /> {t('Uygula')}
           </button>
         </div>
       </div>

@@ -181,8 +181,12 @@ export function transformArcAngles(
   return mirror ? [p1, p0] : [p0, p1]
 }
 
-/** Pad'in dünya konumunu döndürür */
+/** Pad bakırının dünya konumunu döndürür; THT pad'de ofset sarı halkaya aittir. */
 export const padWorldPos = (comp: ComponentInstance, pad: PadDef): Point =>
+  localToWorld(comp, { x: pad.x + (pad.holeDx ?? 0), y: pad.y + (pad.holeDy ?? 0) })
+
+/** Pad deliğinin (drill) dünya konumu. Delik, pad'in x/y merkezinde sabittir. */
+export const padDrillWorldPos = (comp: ComponentInstance, pad: PadDef): Point =>
   localToWorld(comp, { x: pad.x, y: pad.y })
 
 /** Pad'in dünya geometrisi: 90/270 dönüşte en/boy yer değiştirir */

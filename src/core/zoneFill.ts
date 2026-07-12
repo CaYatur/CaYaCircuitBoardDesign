@@ -59,24 +59,39 @@ function drawItem(ctx: CanvasRenderingContext2D, item: CopperPrimitive, color: s
   }
 }
 
-/** Bir THT pad/via'nın etrafına ısı yalıtım (thermal relief) deseni çizer:
- *  ince bir boşluk halkası + 4 köşegen köprü (spoke) ile dolguya bağlanır. */
-function drawThermalRelief(ctx: CanvasRenderingContext2D, x: number, y: number, padR: number): void {
-  const ringOuter = padR + Math.max(0.5, padR * 0.6)
-  const spokeW = Math.max(0.3, padR * 0.7)
+/**
+ * Bir THT pad/via'nın etrafına ısı yalıtım (thermal relief) deseni çizer:
+ *  pad çevresine ince bir boşluk halkası (gap) açılır ve `count` adet köprü
+ *  (spoke) ile dolguya bağlanır. Köprüler SABİT değil, dolguya ULAŞACAK kadar
+ *  UZUN çizilir (`reach`); böylece boşluk (clearance) artsa bile bağlantı
+ *  kopmaz. Köprülerin farklı nete değip kısa devre yapmaması, çağıran tarafın
+ *  köprülerden SONRA yabancı-net boşluğunu yeniden oyması ile garanti edilir.
+ */
+function drawThermalRelief(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  padR: number,
+  opts: { gap: number; spokeW: number; count: 2 | 4; reach: number }
+): void {
+  const ringOuter = padR + Math.max(0.15, opts.gap)
   ctx.fillStyle = '#000'
+  // Pad çevresine boşluk halkası (annulus) aç
   ctx.beginPath()
   ctx.arc(x, y, ringOuter, 0, Math.PI * 2)
   ctx.moveTo(x + padR, y)
   ctx.arc(x, y, padR, 0, Math.PI * 2, true)
   ctx.fill('evenodd')
+  // Köprüler — dolguya ulaşacak kadar uzun (padR'den reach'e). Kısa devre
+  // riskini çağıran, sonrasında yabancı-net boşluğunu tekrar oyarak keser.
   ctx.fillStyle = '#fff'
-  for (let k = 0; k < 4; k++) {
-    const ang = (Math.PI / 2) * k + Math.PI / 4
+  const step = opts.count === 2 ? Math.PI : Math.PI / 2
+  for (let ang = Math.PI / 4; ang < Math.PI * 2; ang += step) {
     ctx.save()
     ctx.translate(x, y)
     ctx.rotate(ang)
-    ctx.fillRect(0, -spokeW / 2, ringOuter + 0.05, spokeW)
+    // pad kenarından başlar (padR - 0.05: pad bakırına değsin), reach'e uzar
+    ctx.fillRect(Math.max(0, padR - 0.1), -opts.spokeW / 2, opts.reach, opts.spokeW)
     ctx.restore()
   }
 }
@@ -108,28 +123,55 @@ export function computeZoneFill(zone: CopperZone, layerCopper: CopperPrimitive[]
   ctx.scale(PX_PER_MM, PX_PER_MM)
   ctx.translate(-ox, -oy)
 
-  // 1) Zone sınırı — beyaz dolgu
-  ctx.fillStyle = '#fff'
+  // Tüm çizim zone sınırına kırpılır → köprüler (spoke) alan dışına taşamaz
+  ctx.save()
   ctx.beginPath()
   ctx.moveTo(zone.points[0].x, zone.points[0].y)
   for (const p of zone.points.slice(1)) ctx.lineTo(p.x, p.y)
   ctx.closePath()
-  ctx.fill()
+  ctx.clip()
+
+  // 1) Zone sınırı — beyaz dolgu
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(ox, oy, bw, bh)
 
   // 2) Farklı net (veya atanmamış) öğelerin çevresi boşaltılır
-  for (const item of layerCopper) {
-    if (zone.net !== '' && item.net === zone.net) continue
-    drawItem(ctx, item, '#000', zone.clearance)
+  const carveForeign = () => {
+    for (const item of layerCopper) {
+      if (zone.net !== '' && item.net === zone.net) continue
+      drawItem(ctx, item, '#000', zone.clearance)
+    }
   }
+  carveForeign()
 
-  // 3) Aynı netteki THT pad/via'lara ısı yalıtım köprüsü (varsayılan açık)
-  if (zone.thermalRelief !== false) {
+  // 3) Aynı netteki THT pad/via'lara bağlantı: 'solid' (doğrudan dolgu) ya da
+  //    'thermal' (ısı yalıtım köprüleri). thermalRelief===false → solid.
+  const solid = zone.connectStyle === 'solid' || zone.thermalRelief === false
+  if (!solid) {
+    const gap = zone.thermalGap && zone.thermalGap > 0 ? zone.thermalGap : 0.5
+    const count: 2 | 4 = zone.spokeCount === 2 ? 2 : 4
     for (const item of layerCopper) {
       if (item.kind !== 'flash' || !item.tht) continue
       if (zone.net === '' || item.net !== zone.net) continue
-      drawThermalRelief(ctx, item.x, item.y, Math.max(item.width, item.height) / 2)
+      const padR = Math.max(item.width, item.height) / 2
+      // Köprü genişliği: kullanıcı değeri, kısa devre olmasın diye varsayılan
+      // olarak pad'e sığacak biçimde kırpılır. `spokeUnclamped` ile bu otomatik
+      // kırpma kapatılabilir (gelişmiş) — kısa devre güvenliği yine de
+      // köprülerden SONRA yabancı-net boşluğunun yeniden oyulmasıyla korunur.
+      const requestedSpoke = zone.spokeWidth && zone.spokeWidth > 0 ? zone.spokeWidth : Math.max(0.4, padR * 0.7)
+      const maxSpoke = Math.max(0.2, Math.min(padR * 1.6, item.width, item.height))
+      const spokeW = zone.spokeUnclamped ? requestedSpoke : Math.min(requestedSpoke, maxSpoke)
+      // Dolguya ulaşacak kadar uzun köprü: boşluk halkası + clearance geri
+      // çekilmesini de aşacak pay. Kısa devreyi aşağıdaki yeniden-oyma keser.
+      const reach = padR + gap + zone.clearance + Math.max(1.5, spokeW)
+      drawThermalRelief(ctx, item.x, item.y, padR, { gap, spokeW, count, reach })
     }
+    // 4) KISA DEVRE GÜVENLİĞİ: köprüler çizildikten SONRA yabancı-net boşluğunu
+    //    yeniden oy → hiçbir köprü başka bir nete köprü kuramaz (oyma kazanır).
+    carveForeign()
   }
+
+  ctx.restore()
 
   const rawContours = extractContours(canvas, PX_PER_MM)
   const contours = rawContours.map((c) => c.map((p) => ({ x: p.x + ox, y: p.y + oy })))

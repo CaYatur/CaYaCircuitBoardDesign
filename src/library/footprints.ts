@@ -4,6 +4,7 @@
 // merkezidir. Pin 1 kare pad ile işaretlenir.
 
 import type { Footprint, PadDef, SilkElement } from '../types'
+import { sparkfunFootprints, adafruitFootprints } from './vendorLibs'
 
 const P = 2.54 // standart pitch
 
@@ -1296,7 +1297,11 @@ export const builtinFootprints: Footprint[] = [
     ],
     silk: [...rectSilk(-3.6, -3.0, 7.2, 5.0, 0.15), { kind: 'text', x: 0, y: -0.5, text: 'µUSB', size: 0.9 }],
     body: { x: -3.6, y: -3.0, width: 7.2, height: 5.6 }
-  }
+  },
+
+  // ═══ SparkFun & Adafruit (Qwiic / STEMMA QT / JST) ═══
+  ...sparkfunFootprints,
+  ...adafruitFootprints
 ]
 
 /** Kategorilerin görüntülenme sırası */
@@ -1311,6 +1316,8 @@ export const footprintCategories = [
   'Konnektör',
   'Buton & Mekanik',
   'Sensör & Modül',
+  'SparkFun',
+  'Adafruit',
   'Özel'
 ]
 
@@ -1321,7 +1328,9 @@ export function refDesPrefix(category: string): string {
     case 'Kondansatör': return 'C'
     case 'Diyot & LED': return 'D'
     case 'Transistör & Regülatör': return 'Q'
-    case 'Konnektör': return 'J'
+    case 'Konnektör':
+    case 'SparkFun':
+    case 'Adafruit': return 'J'
     case 'Buton & Mekanik': return 'S'
     case 'Mikrodenetleyici':
     case 'Motor Sürücü':

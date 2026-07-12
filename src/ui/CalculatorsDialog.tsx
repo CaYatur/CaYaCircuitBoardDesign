@@ -13,6 +13,7 @@ import {
   viaCurrentCapacity
 } from '../core/calculations'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 type Tab = 'trace' | 'via' | 'resistance' | 'impedance'
 
@@ -28,8 +29,8 @@ export function CalculatorsDialog() {
     <div className="modal-backdrop" onMouseDown={() => openDialog(null)}>
       <div className="modal calc-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>🧮 {t('Elektriksel Hesaplayıcılar')}</h3>
-          <button onClick={() => openDialog(null)}>✕</button>
+          <h3><Icon name="calc" size={16} /> {t('Elektriksel Hesaplayıcılar')}</h3>
+          <button onClick={() => openDialog(null)}><Icon name="close" size={14} /></button>
         </div>
         <div className="tabs">
           <button className={tab === 'trace' ? 'active' : ''} onClick={() => setTab('trace')}>

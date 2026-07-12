@@ -25,6 +25,9 @@ import {
 import { componentBBox, padWorldPos, padWorldSize, snapPoint } from '../core/geometry'
 import { usePrompt } from '../ui/prompts'
 import { useT } from '../i18n'
+import { Icon } from '../ui/Icon'
+import { formatLen, toUnit, fromUnit, unitSuffix } from '../core/units'
+import type { MeasureUnit } from '../types'
 
 type Drag =
   | { kind: 'none' }
@@ -92,6 +95,7 @@ export function BoardEditor() {
   const rafId = useRef<number | null>(null)
 
   const project = useStore((s) => s.project)
+  const units = project.settings.units ?? 'mm'
   const getFootprint = useStore((s) => s.getFootprint)
   const commit = useStore((s) => s.commit)
   const mutateLive = useStore((s) => s.mutateLive)
@@ -265,7 +269,7 @@ export function BoardEditor() {
         ctx.stroke()
         ctx.setLineDash([])
         if (showDims) {
-          drawDimLabel(ctx, p.x, p.y - rpx - 12, `⌀${h.drill.toFixed(2)}`, C.dim, labelHits.current, { kind: 'hole-d', index: i, value: h.drill })
+          drawDimLabel(ctx, p.x, p.y - rpx - 12, `⌀${formatLen(h.drill, units)}`, C.dim, labelHits.current, { kind: 'hole-d', index: i, value: h.drill })
         }
       }
     })
@@ -286,7 +290,7 @@ export function BoardEditor() {
         const off = 12
         const lx = sp.x + (dy / nl) * off
         const ly = sp.y - (dx / nl) * off
-        drawDimLabel(ctx, lx, ly, `${len.toFixed(2)}`, C.dim, labelHits.current, {
+        drawDimLabel(ctx, lx, ly, `${formatLen(len, units)}`, C.dim, labelHits.current, {
           kind: 'edge',
           index: i,
           value: len
@@ -306,7 +310,7 @@ export function BoardEditor() {
       ctx.fill()
       ctx.stroke()
       if (sel && (radii[i] ?? 0) > 0.001 && showDims) {
-        drawDimLabel(ctx, sp.x, sp.y - 18, `R${(radii[i] ?? 0).toFixed(2)}`, '#ffd27a', labelHits.current, {
+        drawDimLabel(ctx, sp.x, sp.y - 18, `R${formatLen(radii[i] ?? 0, units)}`, '#ffd27a', labelHits.current, {
           kind: 'radius',
           index: i,
           value: radii[i] ?? 0
@@ -326,8 +330,8 @@ export function BoardEditor() {
           ctx.strokeRect(br.x - 4, br.y - 4, 8, 8)
         }
         if (showDims) {
-          drawDimLabel(ctx, (tl.x + br.x) / 2, tl.y - 12, `${cut.width.toFixed(2)}`, C.cut, labelHits.current, { kind: 'cutout-w', id: cut.id, value: cut.width })
-          drawDimLabel(ctx, tl.x - 16, (tl.y + br.y) / 2, `${cut.height.toFixed(2)}`, C.cut, labelHits.current, { kind: 'cutout-h', id: cut.id, value: cut.height })
+          drawDimLabel(ctx, (tl.x + br.x) / 2, tl.y - 12, `${formatLen(cut.width, units)}`, C.cut, labelHits.current, { kind: 'cutout-w', id: cut.id, value: cut.width })
+          drawDimLabel(ctx, tl.x - 16, (tl.y + br.y) / 2, `${formatLen(cut.height, units)}`, C.cut, labelHits.current, { kind: 'cutout-h', id: cut.id, value: cut.height })
         }
       } else {
         const c = W({ x: cut.x, y: cut.y })
@@ -339,7 +343,7 @@ export function BoardEditor() {
           ctx.strokeRect(c.x + rpx - 4, c.y - 4, 8, 8)
         }
         if (showDims) {
-          drawDimLabel(ctx, c.x, c.y - rpx - 12, `⌀${cut.width.toFixed(2)}`, C.cut, labelHits.current, { kind: 'cutout-w', id: cut.id, value: cut.width })
+          drawDimLabel(ctx, c.x, c.y - rpx - 12, `⌀${formatLen(cut.width, units)}`, C.cut, labelHits.current, { kind: 'cutout-w', id: cut.id, value: cut.width })
         }
       }
     }
@@ -360,8 +364,8 @@ export function BoardEditor() {
       ctx.lineTo(by1.x - 26, by1.y)
       ctx.stroke()
       ctx.setLineDash([])
-      drawDimLabel(ctx, (bx0.x + bx1.x) / 2, bx0.y - 26, `${board.width.toFixed(2)} mm`, '#9fe0ff', labelHits.current, { kind: 'bbox-w', value: board.width })
-      drawDimLabel(ctx, bx0.x - 26, (bx0.y + by1.y) / 2, `${board.height.toFixed(2)} mm`, '#9fe0ff', labelHits.current, { kind: 'bbox-h', value: board.height })
+      drawDimLabel(ctx, (bx0.x + bx1.x) / 2, bx0.y - 26, `${formatLen(board.width, units)} ${unitSuffix(units)}`, '#9fe0ff', labelHits.current, { kind: 'bbox-w', value: board.width })
+      drawDimLabel(ctx, bx0.x - 26, (bx0.y + by1.y) / 2, `${formatLen(board.height, units)} ${unitSuffix(units)}`, '#9fe0ff', labelHits.current, { kind: 'bbox-h', value: board.height })
     }
 
     // Hizalama kılavuzları (vertex sürüklerken)
@@ -831,7 +835,7 @@ export function BoardEditor() {
           <input type="checkbox" checked={showPcb} onChange={(e) => setShowPcb(e.target.checked)} />
           {t('PCB içeriğini göster')}
         </label>
-        <button onClick={() => openDialog('board-settings')} title={t('Kart ayarları')}>⚙ {t('Ayarlar')}</button>
+        <button onClick={() => openDialog('board-settings')} title={t('Kart ayarları')}><Icon name="board" size={14} /> {t('Ayarlar')}</button>
         <button
           onClick={async () => {
             const v = await ask(t('Montaj deliği çapı (mm)'), '3.2')
@@ -868,7 +872,7 @@ export function BoardEditor() {
                   commit((p) => { p.board.mountingHoles = p.board.mountingHoles.filter((_, i) => i !== selHole) }, t('Montaj deliği silindi'))
                   setSelHole(null)
                 }}
-              >🗑 {t('Deliği sil')}</button>
+              ><Icon name="trash" size={13} /> {t('Deliği sil')}</button>
             </>
           )}
           {selVertex !== null && points[selVertex] && (
@@ -897,7 +901,7 @@ export function BoardEditor() {
                     setSelVertex(null)
                   }
                 }}
-              >🗑 {t('Köşeyi sil')}</button>
+              ><Icon name="trash" size={13} /> {t('Köşeyi sil')}</button>
             </>
           )}
           {selCutout && (() => {
@@ -925,7 +929,7 @@ export function BoardEditor() {
                     commit((p) => { p.board.cutouts = (p.board.cutouts ?? []).filter((c) => c.id !== selCutout) }, t('Kesim silindi'))
                     setSelCutout(null)
                   }}
-                >🗑 {t('Kesimi sil')}</button>
+                ><Icon name="trash" size={13} /> {t('Kesimi sil')}</button>
               </>
             )
           })()}
@@ -937,6 +941,7 @@ export function BoardEditor() {
           x={dimEdit.screenX}
           y={dimEdit.screenY}
           initial={dimEdit.action.value}
+          units={units}
           onCancel={() => setDimEdit(null)}
           onApply={applyDim}
         />
@@ -1073,37 +1078,46 @@ function drawPcbOverlay(
   }
 }
 
-/** Ekranda beliren küçük sayısal ölçü giriş kutusu (Fusion benzeri) */
+/** Ekranda beliren küçük sayısal ölçü giriş kutusu (Fusion benzeri).
+ *  `initial` ve onApply DAİMA mm cinsindendir; kutu değeri seçili birimde
+ *  gösterir/alır ve mm'ye çevirerek uygular. */
 function DimInput({
   x,
   y,
   initial,
+  units,
   onApply,
   onCancel
 }: {
   x: number
   y: number
   initial: number
+  units: MeasureUnit
   onApply: (v: number) => void
   onCancel: () => void
 }) {
-  const [val, setVal] = useState(String(Number(initial.toFixed(3))))
+  const [val, setVal] = useState(String(Number(toUnit(initial, units).toFixed(4))))
+  const apply = () => {
+    const v = parseFloat(val)
+    if (!isNaN(v)) onApply(fromUnit(v, units))
+    else onCancel()
+  }
   return (
     <div className="dim-input" style={{ left: x, top: y }}>
       <input
         autoFocus
         type="number"
-        step={0.1}
+        step={units === 'mil' ? 5 : units === 'inch' ? 0.005 : 0.1}
         value={val}
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') { const v = parseFloat(val); if (!isNaN(v)) onApply(v) }
+          if (e.key === 'Enter') { const v = parseFloat(val); if (!isNaN(v)) onApply(fromUnit(v, units)) }
           else if (e.key === 'Escape') onCancel()
           e.stopPropagation()
         }}
-        onBlur={() => { const v = parseFloat(val); if (!isNaN(v)) onApply(v); else onCancel() }}
+        onBlur={apply}
       />
-      <span>mm</span>
+      <span>{unitSuffix(units)}</span>
     </div>
   )
 }

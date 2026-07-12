@@ -2,7 +2,7 @@
 // Proje: .cayapcb (JSON). Footprint kütüphanesi: .cayalib (JSON).
 
 import type { Footprint, Project } from '../types'
-import { DEFAULT_PCB_COLOR, defaultConnectionFollow, newProject } from '../types'
+import { DEFAULT_PCB_COLOR, defaultConnectionFollow, defaultTitleBlock, newProject } from '../types'
 import { pickTextFile, saveTextFile } from './files'
 import { native } from './native'
 import { sanitize } from './gerber'
@@ -100,6 +100,8 @@ export function validateProject(raw: any): Project {
     schematic: {
       symbols: Array.isArray(raw.schematic?.symbols) ? raw.schematic.symbols : [],
       wires: Array.isArray(raw.schematic?.wires) ? raw.schematic.wires : [],
+      // Başlık bloğu — varsa varsayılanlarla birleştir, yoksa varsayılan üret
+      titleBlock: { ...defaultTitleBlock(), ...(raw.schematic?.titleBlock ?? {}) },
       // Şema senkron provenansı (tel kaynaklı pin atamaları) — varsa koru
       ...(raw.schematic?.pinNets && typeof raw.schematic.pinNets === 'object'
         ? { pinNets: raw.schematic.pinNets }
@@ -153,6 +155,9 @@ export function validateProject(raw: any): Project {
   }
   if (typeof project.settings.padLabelAutoHideCrowded !== 'boolean') {
     project.settings.padLabelAutoHideCrowded = true
+  }
+  if (!['mm', 'mil', 'inch'].includes(project.settings.units)) {
+    project.settings.units = 'mm'
   }
   delete (project.settings as any).clearNetsOnPathDelete
   // Komponentlerin padNets alanı olduğundan emin ol
@@ -222,6 +227,8 @@ export function validateFootprint(raw: any): Footprint {
       width: Number(p.width) || 1,
       height: Number(p.height) || 1,
       ...(p.drill ? { drill: Number(p.drill) } : {}),
+      ...(Number.isFinite(p.holeDx) && Number(p.holeDx) !== 0 ? { holeDx: Number(p.holeDx) } : {}),
+      ...(Number.isFinite(p.holeDy) && Number(p.holeDy) !== 0 ? { holeDy: Number(p.holeDy) } : {}),
       layer: ['top', 'bottom', 'both'].includes(p.layer) ? p.layer : 'both',
       ...(Number.isFinite(p.nameDx) ? { nameDx: Number(p.nameDx) } : {}),
       ...(Number.isFinite(p.nameDy) ? { nameDy: Number(p.nameDy) } : {})

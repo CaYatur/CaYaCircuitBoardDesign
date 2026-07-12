@@ -5,6 +5,7 @@ import { saveProjectFile, openProjectFile } from '../io/project'
 import { useRecents } from '../state/recents'
 import { usePrompt } from './prompts'
 import { useI18n, useT } from '../i18n'
+import { Icon } from './Icon'
 
 export function Toolbar() {
   const mode = useStore((s) => s.mode)
@@ -15,7 +16,6 @@ export function Toolbar() {
   const canRedo = useStore((s) => s.future.length > 0)
   const openDialog = useStore((s) => s.openDialog)
   const runDrcNow = useStore((s) => s.runDrcNow)
-  const project = useStore((s) => s.project)
   const loadProject = useStore((s) => s.loadProject)
   const resetProject = useStore((s) => s.resetProject)
   const setStatus = useStore((s) => s.setStatus)
@@ -106,28 +106,28 @@ export function Toolbar() {
           onClick={() => setMode('schematic')}
           title={t('Devre şeması — teller PCB netlerine senkronlanır')}
         >
-          ⌁ {t('Şema')}
+          <Icon name="schematic" size={16} /> {t('Şema')}
         </button>
         <button
           className={mode === 'pcb' ? 'active' : ''}
           onClick={() => setMode('pcb')}
           title={t('Kart yerleşimi ve rotalama')}
         >
-          ▦ PCB
+          <Icon name="pcb" size={16} /> PCB
         </button>
         <button
           className={mode === 'board' ? 'active' : ''}
           onClick={() => setMode('board')}
           title={t('Kart dış hattını ölçülü, profesyonel biçimde düzenleyin')}
         >
-          ▧ {t('Kart Editörü')}
+          <Icon name="boardedit" size={16} /> {t('Kart Editörü')}
         </button>
         <button
           className={mode === 'view3d' ? 'active' : ''}
           onClick={() => setMode('view3d')}
           title={t('3B görünüm — kartı ve bileşenleri üç boyutlu görüntüleyin')}
         >
-          ⬢ {t('3B Görünüm')}
+          <Icon name="cube" size={16} /> {t('3B Görünüm')}
         </button>
       </div>
 
@@ -136,19 +136,19 @@ export function Toolbar() {
           title={t('Başlangıç ekranı (son kullanılanlar)')}
           onClick={() => useStore.getState().setShowStartScreen(true)}
         >
-          🏠 {t('Başlangıç')}
+          <Icon name="home" size={16} /> {t('Başlangıç')}
         </button>
-        <button title={t('Yeni Proje')} onClick={handleNew}>🗋 {t('Yeni')}</button>
-        <button title={t('Proje Aç (.cayapcb)')} onClick={handleOpen}>📂 {t('Aç')}</button>
-        <button title={t('Projeyi Kaydet')} onClick={handleSave}>💾 {t('Kaydet')}</button>
+        <button title={t('Yeni Proje')} onClick={handleNew}><Icon name="newfile" size={16} /> {t('Yeni')}</button>
+        <button title={t('Proje Aç (.cayapcb)')} onClick={handleOpen}><Icon name="folder" size={16} /> {t('Aç')}</button>
+        <button title={t('Projeyi Kaydet')} onClick={handleSave}><Icon name="save" size={16} /> {t('Kaydet')}</button>
         <button title={t('Farklı Kaydet (yeni konum)')} onClick={() => doSave(true)}>
-          {t('Farklı Kaydet')}
+          <Icon name="saveas" size={16} /> {t('Farklı Kaydet')}
         </button>
       </div>
 
       <div className="toolbar-group">
-        <button title={t('Geri Al') + ' (Ctrl+Z)'} onClick={undo} disabled={!canUndo}>↩</button>
-        <button title={t('Yinele') + ' (Ctrl+Y)'} onClick={redo} disabled={!canRedo}>↪</button>
+        <button title={t('Geri Al') + ' (Ctrl+Z)'} onClick={undo} disabled={!canUndo}><Icon name="undo" size={16} /></button>
+        <button title={t('Yinele') + ' (Ctrl+Y)'} onClick={redo} disabled={!canRedo}><Icon name="redo" size={16} /></button>
       </div>
 
       {mode === 'pcb' && (
@@ -210,29 +210,37 @@ export function Toolbar() {
         </>
       )}
 
+      {mode === 'schematic' && (
+        <div className="toolbar-group">
+          <button title={t('Şema bilgileri / başlık bloğu (TITLE, REV, tarih, notlar)')} onClick={() => openDialog('title-block')}>
+            <Icon name="clipboard" size={16} /> {t('Şema Bilgileri')}
+          </button>
+        </div>
+      )}
+
       <div className="toolbar-spacer" />
 
       <div className="toolbar-group">
         <button title={t('Otomatik rotalama')} onClick={() => openDialog('autoroute')}>
-          🤖 {t('Otoroute')}
+          <Icon name="robot" size={16} /> {t('Otoroute')}
         </button>
         <button title={t('Tasarım kuralı denetimi')} onClick={runDrcNow}>
-          ✔ DRC
+          <Icon name="drc" size={16} /> DRC
         </button>
         <button title={t('Elektriksel hesaplayıcılar')} onClick={() => openDialog('calculators')}>
-          🧮 {t('Hesap')}
+          <Icon name="calc" size={16} /> {t('Hesap')}
         </button>
         <button title={t('Footprint editörü')} onClick={() => openDialog('footprint-editor')}>
-          ⬡ Footprint
+          <Icon name="chip" size={16} /> Footprint
         </button>
         <button title={t('Kart ayarları ve tasarım kuralları')} onClick={() => openDialog('board-settings')}>
-          ⚙ {t('Kart')}
+          <Icon name="board" size={16} /> {t('Kart')}
         </button>
         <button title={t('Uygulama ayarları (bağlantı takibi vb.)')} onClick={() => openDialog('settings')}>
-          ⚙ {t('Ayarlar')}
+          <Icon name="gear" size={16} /> {t('Ayarlar')}
         </button>
         <button className="btn-accent" title={t('Dışa aktar')} onClick={() => openDialog('export')}>
-          ⇩ {t('Dışa Aktar')}
+          <Icon name="export" size={16} /> {t('Dışa Aktar')}
         </button>
       </div>
 
@@ -243,8 +251,8 @@ export function Toolbar() {
           onChange={(e) => setLang(e.target.value as 'tr' | 'en')}
           title={t('Dil / Language')}
         >
-          <option value="tr">🇹🇷 TR</option>
-          <option value="en">🇬🇧 EN</option>
+          <option value="tr">TR · Türkçe</option>
+          <option value="en">EN · English</option>
         </select>
       </div>
     </div>

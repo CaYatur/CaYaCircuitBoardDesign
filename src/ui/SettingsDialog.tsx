@@ -6,6 +6,7 @@ import { useStore } from '../state/store'
 import type { ConnectionFollowSettings } from '../types'
 import { usePrompt } from './prompts'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 function Toggle({
   checked,
@@ -68,8 +69,8 @@ export function SettingsDialog() {
     <div className="modal-backdrop" onMouseDown={() => openDialog(null)}>
       <div className="modal settings-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>⚙ {t('Ayarlar')}</h3>
-          <button onClick={() => openDialog(null)}>✕</button>
+          <h3><Icon name="gear" size={16} /> {t('Ayarlar')}</h3>
+          <button onClick={() => openDialog(null)}><Icon name="close" size={14} /></button>
         </div>
 
         {/* ── Bağlantı takibi ── */}

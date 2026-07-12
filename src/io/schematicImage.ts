@@ -9,6 +9,7 @@ import {
   symbolLayout,
   symbolToWorld
 } from '../schematic/model'
+import { buildSheet } from '../schematic/titleBlock'
 import { downloadBlob } from './files'
 
 const esc = (s: string) =>
@@ -84,9 +85,14 @@ export function schematicSvg(
   scale = 4
 ): { svg: string; width: number; height: number } {
   const b = schematicBounds(project, getFootprint)
+  const sheet = buildSheet(project, getFootprint)
+  // Başlık bloğu varsa çıktı sınırı sayfa çerçevesini kapsayacak şekilde genişler
+  const db = sheet
+    ? { minX: sheet.frame.x - 3, minY: sheet.frame.y - 3, width: sheet.frame.w + 6, height: sheet.frame.h + 6 }
+    : b
   const parts: string[] = []
   parts.push(
-    `<rect x="${f(b.minX)}" y="${f(b.minY)}" width="${f(b.width)}" height="${f(b.height)}" fill="${C.bg}"/>`
+    `<rect x="${f(db.minX)}" y="${f(db.minY)}" width="${f(db.width)}" height="${f(db.height)}" fill="${C.bg}"/>`
   )
 
   // Teller
@@ -153,10 +159,27 @@ export function schematicSvg(
     parts.push('</g>')
   }
 
-  const pxW = Math.ceil(b.width * scale)
-  const pxH = Math.ceil(b.height * scale)
+  // Sayfa çerçevesi + başlık bloğu (ekran editörüyle aynı yerleşim)
+  if (sheet) {
+    const tbColor = { label: '#5a6672', value: '#15324c', title: '#0a4a86' }
+    for (const pr of sheet.prims) {
+      if (pr.t === 'line') {
+        parts.push(
+          `<line x1="${f(pr.x1)}" y1="${f(pr.y1)}" x2="${f(pr.x2)}" y2="${f(pr.y2)}" stroke="${C.box}" stroke-width="${f(pr.w)}"/>`
+        )
+      } else {
+        const anchor = pr.align === 'center' ? 'middle' : pr.align === 'right' ? 'end' : 'start'
+        parts.push(
+          `<text x="${f(pr.x)}" y="${f(pr.y)}" font-size="${f(pr.size)}" fill="${tbColor[pr.role]}" text-anchor="${anchor}"${pr.bold ? ' font-weight="bold"' : ''} font-family="system-ui,sans-serif">${esc(pr.text)}</text>`
+        )
+      }
+    }
+  }
+
+  const pxW = Math.ceil(db.width * scale)
+  const pxH = Math.ceil(db.height * scale)
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}" viewBox="${f(b.minX)} ${f(b.minY)} ${f(b.width)} ${f(b.height)}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}" viewBox="${f(db.minX)} ${f(db.minY)} ${f(db.width)} ${f(db.height)}">
 <!-- CaYa PCB Studio — şema -->
 ${parts.join('\n')}
 </svg>

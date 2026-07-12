@@ -5,7 +5,7 @@
 // algoritması) ve sabit ışıkla gölgeleyerek çizer. Amaç: gerçekçi bir önizleme.
 
 import type { ComponentInstance, Footprint, PadDef, Point, Project } from '../types'
-import { componentBBox, localToWorld, padWorldPos, padWorldSize, rotatePoint, pointInPolygon } from '../core/geometry'
+import { componentBBox, localToWorld, padWorldPos, padDrillWorldPos, padWorldSize, rotatePoint, pointInPolygon } from '../core/geometry'
 import { boardEditablePolygon, cutoutOutlinePoints, filletPolygon } from '../core/boardGeometry'
 import { placeText } from './vectorFont'
 import { getCachedImage } from './imageCache'
@@ -274,9 +274,9 @@ function buildPads(comp: ComponentInstance, fp: Footprint, out: Face[]) {
   for (const pad of fp.pads) {
     if (pad.name.startsWith('MH')) {
       // montaj deliği pad'i — sadece delik
-      const pos = padWorldPos(comp, pad)
+      const hpos = padDrillWorldPos(comp, pad)
       if (pad.drill) {
-        out.push({ pts: orient(disc(pos.x, pos.y, pad.drill / 2, zNear + dir * 0.01), !bottom), color: 'rgb(18,20,24)', layer })
+        out.push({ pts: orient(disc(hpos.x, hpos.y, pad.drill / 2, zNear + dir * 0.01), !bottom), color: 'rgb(18,20,24)', layer })
       }
       continue
     }
@@ -299,10 +299,11 @@ function buildPads(comp: ComponentInstance, fp: Footprint, out: Face[]) {
       flatFace(bottom ? [...rectPts].reverse() : rectPts, zNear, gold, out, layer)
       if (isTht) flatFace(bottom ? rectPts : [...rectPts].reverse(), zFar, gold, out, otherLayer)
     }
-    // delik (THT) — her iki yüzde koyu disk
+    // delik (THT) — her iki yüzde koyu disk (pad merkezine göre kaymalı)
     if (pad.drill) {
-      out.push({ pts: orient(disc(pos.x, pos.y, pad.drill / 2, zNear + dir * 0.01), !bottom), color: 'rgb(18,20,24)', layer })
-      out.push({ pts: orient(disc(pos.x, pos.y, pad.drill / 2, zFar - dir * 0.01), bottom), color: 'rgb(18,20,24)', layer: otherLayer })
+      const hpos = padDrillWorldPos(comp, pad)
+      out.push({ pts: orient(disc(hpos.x, hpos.y, pad.drill / 2, zNear + dir * 0.01), !bottom), color: 'rgb(18,20,24)', layer })
+      out.push({ pts: orient(disc(hpos.x, hpos.y, pad.drill / 2, zFar - dir * 0.01), bottom), color: 'rgb(18,20,24)', layer: otherLayer })
     }
   }
 }

@@ -12,6 +12,7 @@ import {
 } from '../core/calculations'
 import { polylineLength } from '../core/geometry'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 export function PropertiesPanel() {
   const selection = useStore((s) => s.selection)
@@ -141,13 +142,13 @@ export function PropertiesPanel() {
               className="props-action-btn"
               onClick={() => useStore.setState({ pinEditorComponentId: comp.id })}
             >
-              ⚡ {t('Pinleri / Netleri Düzenle')}
+              <Icon name="net" size={14} /> {t('Pinleri / Netleri Düzenle')}
             </button>
             <button
               className="props-action-btn"
               onClick={() => openFootprintEditor(comp.footprintId)}
             >
-              ⬡ {t('Footprint\'i Düzenle')}
+              <Icon name="chip" size={14} /> {t('Footprint\'i Düzenle')}
             </button>
           </div>
 
@@ -283,23 +284,86 @@ export function PropertiesPanel() {
             onCommit={(v) =>
               commit((p) => {
                 const x = p.zones.find((q) => q.id === zone.id)
-                if (x) x.clearance = v
+                if (x) x.clearance = Math.min(20, Math.max(0, v))
               })
             }
           />
-          <div className="field field-checkbox">
-            <label>{t('Isı yalıtım köprüsü (thermal relief)')}</label>
-            <input
-              type="checkbox"
-              checked={zone.thermalRelief !== false}
+          <div className="field">
+            <label>{t('Pad bağlantı biçimi')}</label>
+            <select
+              value={zone.connectStyle === 'solid' || zone.thermalRelief === false ? 'solid' : 'thermal'}
               onChange={(e) =>
                 commit((p) => {
                   const x = p.zones.find((q) => q.id === zone.id)
-                  if (x) x.thermalRelief = e.target.checked
+                  if (x) {
+                    x.connectStyle = e.target.value as 'thermal' | 'solid'
+                    // Eski bayrağı da tutarlı tut
+                    x.thermalRelief = e.target.value === 'thermal'
+                  }
                 })
               }
-            />
+            >
+              <option value="thermal">{t('Isı köprüsü (thermal)')}</option>
+              <option value="solid">{t('Katı dolgu (solid)')}</option>
+            </select>
           </div>
+          {!(zone.connectStyle === 'solid' || zone.thermalRelief === false) && (
+            <>
+              <NumField
+                label={t('Köprü genişliği (mm)')}
+                value={zone.spokeWidth ?? 0.5}
+                onCommit={(v) =>
+                  commit((p) => {
+                    const x = p.zones.find((q) => q.id === zone.id)
+                    if (x) x.spokeWidth = Math.max(0.1, v)
+                  })
+                }
+              />
+              <NumField
+                label={t('Yalıtım boşluğu (mm)')}
+                value={zone.thermalGap ?? 0.5}
+                onCommit={(v) =>
+                  commit((p) => {
+                    const x = p.zones.find((q) => q.id === zone.id)
+                    if (x) x.thermalGap = Math.max(0.1, v)
+                  })
+                }
+              />
+              <div className="field">
+                <label>{t('Köprü sayısı')}</label>
+                <select
+                  value={zone.spokeCount ?? 4}
+                  onChange={(e) =>
+                    commit((p) => {
+                      const x = p.zones.find((q) => q.id === zone.id)
+                      if (x) x.spokeCount = (parseInt(e.target.value) === 2 ? 2 : 4)
+                    })
+                  }
+                >
+                  <option value={4}>4</option>
+                  <option value={2}>2</option>
+                </select>
+              </div>
+              <div className="field field-checkbox">
+                <label>{t('Genişlik sınırını kaldır (gelişmiş)')}</label>
+                <input
+                  type="checkbox"
+                  checked={!!zone.spokeUnclamped}
+                  onChange={(e) =>
+                    commit((p) => {
+                      const x = p.zones.find((q) => q.id === zone.id)
+                      if (x) x.spokeUnclamped = e.target.checked
+                    })
+                  }
+                />
+              </div>
+              {zone.spokeUnclamped && (
+                <p className="calc-note">
+                  {t('Köprü genişliği pad boyutuna göre otomatik küçültülmez — girdiğiniz değer aynen kullanılır. Çok geniş köprüler pad dışına taşabilir.')}
+                </p>
+              )}
+            </>
+          )}
           <div className="props-info">
             {(() => {
               const xs = zone.points.map((p) => p.x)
@@ -330,7 +394,7 @@ function ImageProps({ imageId }: { imageId: string }) {
   return (
     <div className="props-group">
       <h4>
-        🖼 {t('Görsel')} <small>({im.format.toUpperCase()})</small>
+        <Icon name="image" size={13} /> {t('Görsel')} <small>({im.format.toUpperCase()})</small>
       </h4>
       <NumField
         label={t('Genişlik (mm)')}
@@ -491,7 +555,7 @@ function TraceProps({ traceId }: { traceId: string }) {
         {t('İpucu: köşe noktalarını canvas üzerinde sürükleyerek düzenleyebilirsiniz')}
       </div>
       <div className="trace-analysis">
-        <h5>⚡ {t('Otomatik analiz')} ({oz} oz)</h5>
+        <h5><Icon name="net" size={13} /> {t('Otomatik analiz')} ({oz} oz)</h5>
         <div>{t('Uzunluk')}: <b>{length.toFixed(2)} mm</b></div>
         <div>{t('Direnç')}: <b>{formatOhm(resistance)}</b></div>
         <div>{t('Maks. akım')} (ΔT=10°C): <b>{maxCurrent10.toFixed(2)} A</b></div>

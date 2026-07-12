@@ -6,6 +6,12 @@ Kapsamlı, çift katmanlı devre kartı (PCB) tasarım uygulaması — **macOS, 
 
 ![Electron](https://img.shields.io/badge/Electron-33-47848F) ![React](https://img.shields.io/badge/React-18-61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6) ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+-----
+![PCB_Screen_Image](PCB_Image.png)
+-----
+![Schematic_Screen_Image](Schema_Image.png)
+-----
+
 ## Özellikler
 
 - **PCB Editörü** — tek/çift katman, pan/zoom, ızgara + yaslama, 45° iz çizimi, via ile katman geçişi, iz köşe noktası düzenleme, bakır alanlar (zone), undo/redo, kopyala/yapıştır

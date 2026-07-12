@@ -4,6 +4,7 @@ import { useStore } from '../state/store'
 import type { VisibleLayer } from '../types'
 import { COLORS } from '../render/renderer'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 const layers: { id: VisibleLayer; label: string; color: string; copper?: boolean }[] = [
   { id: 'top', label: 'Üst bakır', color: COLORS.top, copper: true },
@@ -38,7 +39,7 @@ export function LayerPanel() {
         title={t('Kartı arkadan görüntüle (sol-sağ aynalanmış görünüm)')}
         onClick={() => toggleViewFlipped()}
       >
-        🔄 {viewFlipped ? t('Alttan görünüyor') : t('Alttan Gör')}
+        <Icon name="refresh" size={14} /> {viewFlipped ? t('Alttan görünüyor') : t('Alttan Gör')}
       </button>
       {layers.map((l) => {
         const disabled =

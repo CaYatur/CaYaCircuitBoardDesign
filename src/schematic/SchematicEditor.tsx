@@ -22,8 +22,10 @@ import {
   wiresInGroup
 } from './model'
 import { schematicGlyph, type GlyphPrim } from './symbols'
+import { buildSheet } from './titleBlock'
 import { usePrompt } from '../ui/prompts'
 import { NetPopover, suggestNetName } from '../ui/NetPopover'
+import { Icon } from '../ui/Icon'
 import { useT } from '../i18n'
 
 interface View {
@@ -263,6 +265,33 @@ export function SchematicEditor() {
     }
 
     const px = (n: number) => n / view.scale // ekran pikselini dünya birimine çevir
+
+    // ── Sayfa çerçevesi + başlık bloğu (title block) ──
+    const sheet = buildSheet(project, getFootprint)
+    if (sheet) {
+      const roleColor: Record<'label' | 'value' | 'title', string> = {
+        label: 'rgba(160,176,190,0.75)',
+        value: '#e6edf3',
+        title: '#9fd8ff'
+      }
+      ctx.textBaseline = 'alphabetic'
+      for (const pr of sheet.prims) {
+        if (pr.t === 'line') {
+          ctx.strokeStyle = 'rgba(255,255,255,0.32)'
+          ctx.lineWidth = pr.w
+          ctx.beginPath()
+          ctx.moveTo(pr.x1, pr.y1)
+          ctx.lineTo(pr.x2, pr.y2)
+          ctx.stroke()
+        } else {
+          ctx.fillStyle = roleColor[pr.role]
+          ctx.font = `${pr.bold ? 'bold ' : ''}${pr.size}px system-ui, sans-serif`
+          ctx.textAlign = pr.align
+          ctx.fillText(pr.text, pr.x, pr.y)
+        }
+      }
+      ctx.textAlign = 'left'
+    }
 
     // ── Çakışmasız etiket yerleştirme ──
     // Tüm metin etiketleri (tel adları, pin adları, net adları) dünya uzayında
@@ -1092,7 +1121,7 @@ export function SchematicEditor() {
                 setWireMenu(null)
               }}
             >
-              🗑 {t('Noktayı sil')}
+              <Icon name="trash" size={13} /> {t('Noktayı sil')}
             </button>
             {!wireMenu.isEndpoint && (
               <button
@@ -1102,7 +1131,7 @@ export function SchematicEditor() {
                   setWireMenu(null)
                 }}
               >
-                ✂ {t('Teli buradan böl')}
+                <Icon name="cut" size={13} /> {t('Teli buradan böl')}
               </button>
             )}
           </div>

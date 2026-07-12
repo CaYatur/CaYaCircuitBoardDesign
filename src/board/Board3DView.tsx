@@ -15,6 +15,7 @@ import { loadModelFromFile, pickModelFile } from '../io/model3d'
 import { exportSceneObj } from '../io/scene3d'
 import { downloadBlob, saveTextFile } from '../io/files'
 import { useT } from '../i18n'
+import { Icon } from '../ui/Icon'
 
 export function Board3DView() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -288,17 +289,17 @@ export function Board3DView() {
       <div className="board-toolbar view3d-toolbar">
         {project.components.length > 0 && (
           <button className={showColors ? 'active' : ''} onClick={() => setShowColors((v) => !v)} title={t('Bileşen renklerini ayrı ayrı değiştir')}>
-            🎨 {t('Renkler')}
+            <Icon name="palette" size={14} /> {t('Renkler')}
           </button>
         )}
         {models.length > 0 && (
           <button className={showPanel ? 'active' : ''} onClick={() => setShowPanel((v) => !v)} disabled={busy}>
-            ⚙ {t('Modeller')} ({models.length})
+            <Icon name="gear" size={14} /> {t('Modeller')} ({models.length})
           </button>
         )}
         {selectionLabel && (
           <button onClick={() => clearSelection()} title={t('Seçimi temizle')}>
-            ✓ {selectionLabel} ✕
+            <Icon name="check" size={13} /> {selectionLabel} <Icon name="close" size={12} />
           </button>
         )}
         <span className="board-hint">
@@ -309,8 +310,8 @@ export function Board3DView() {
       {showColors && project.components.length > 0 && (
         <div className="model3d-panel comp3d-panel">
           <div className="model3d-panel-head">
-            <h4>🎨 {t('Bileşen renkleri')}</h4>
-            <button onClick={() => setShowColors(false)}>✕</button>
+            <h4><Icon name="palette" size={15} /> {t('Bileşen renkleri')}</h4>
+            <button onClick={() => setShowColors(false)}><Icon name="close" size={14} /></button>
           </div>
           <div className="model3d-list">
             {project.components.map((c) => {
@@ -343,8 +344,8 @@ export function Board3DView() {
       {showPanel && models.length > 0 && (
         <div className="model3d-panel">
           <div className="model3d-panel-head">
-            <h4>⬢ {t('3B Modeller')}</h4>
-            <button onClick={() => setShowPanel(false)}>✕</button>
+            <h4><Icon name="cube" size={15} /> {t('3B Modeller')}</h4>
+            <button onClick={() => setShowPanel(false)}><Icon name="close" size={14} /></button>
           </div>
           <div className="model3d-list">
             {models.map((m) => (
@@ -364,7 +365,7 @@ export function Board3DView() {
                     onChange={(e) => updateModel3D(m.id, { color: e.target.value })}
                     title={t('Renk')}
                   />
-                  <button className="model3d-del" onClick={() => removeModel3D(m.id)} title={t('Sil')}>🗑</button>
+                  <button className="model3d-del" onClick={() => removeModel3D(m.id)} title={t('Sil')}><Icon name="trash" size={13} /></button>
                 </div>
                 <ModelSlider label={t('Ölçek')} value={m.scale} min={0.01} max={20} step={0.01}
                   onChange={(v) => updateModel3D(m.id, { scale: v })} />

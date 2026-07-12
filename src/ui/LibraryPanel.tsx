@@ -10,6 +10,7 @@ import { useUserLibrary } from '../state/userLibrary'
 import { footprintCategories, builtinFootprints } from '../library/footprints'
 import { exportFootprintLibrary, importFootprintLibrary } from '../io/project'
 import { pickImageFile } from '../io/files'
+import { Icon } from './Icon'
 import { usePrompt } from './prompts'
 import { useT } from '../i18n'
 
@@ -161,7 +162,7 @@ export function LibraryPanel() {
       }}
     >
       <span className="item-name">
-        {f.custom ? '★ ' : ''}{t(f.name)}
+        {f.custom && <Icon name="star" size={11} style={{ marginRight: 3, color: 'var(--accent)' }} />}{t(f.name)}
       </span>
       <span className="item-desc">{f.description}</span>
     </button>
@@ -188,7 +189,7 @@ export function LibraryPanel() {
               className="category-del"
               title={t('Kategoriyi sil (içindekiler Genel\'e taşınır)')}
               onClick={() => deleteUserCategory(cat)}
-            >🗑</button>
+            ><Icon name="trash" size={13} /></button>
           )}
         </div>
         {isOpen && items.map(renderItem)}
@@ -201,7 +202,7 @@ export function LibraryPanel() {
       <h3>{t('Komponent Kütüphanesi')}</h3>
       <input
         className="library-search"
-        placeholder={t('🔍 Ara: arduino, esp, direnç...')}
+        placeholder={t('Ara: arduino, esp, direnç...')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
@@ -212,7 +213,7 @@ export function LibraryPanel() {
 
         {/* ── Kullanıcı Kütüphanem ── */}
         <div className="library-section-divider">
-          ★ {t('Kullanıcı Kütüphanem')} <span>{userCount}</span>
+          <Icon name="star" size={13} /> {t('Kullanıcı Kütüphanem')} <span>{userCount}</span>
         </div>
         {userCount === 0 ? (
           <p className="library-empty-note">
@@ -230,7 +231,7 @@ export function LibraryPanel() {
           onClick={() => openDialog('footprint-editor')}
           title={t('Kendi ölçülerinizle yeni komponent oluşturun')}
         >
-          ＋ {t('Yeni')}
+          <Icon name="plus" size={14} /> {t('Yeni')}
         </button>
         <button onClick={handleImport} title={t('Footprint kütüphanesi içe aktar (.cayalib)')}>
           ⇧ {t('İçe Al')}
@@ -245,12 +246,12 @@ export function LibraryPanel() {
           onClick={handleAddImage}
           title={t('Karta SVG/PNG görsel (logo/işaret) ekle')}
         >
-          🖼 {t('Görsel Ekle (SVG/PNG)')}
+          <Icon name="image" size={14} /> {t('Görsel Ekle (SVG/PNG)')}
         </button>
       </div>
       {storagePath && (
         <div className="library-storage-note" title={storagePath}>
-          💾 {t('Otomatik kayıt')}: {t('PC kütüphanesi')}
+          <Icon name="save" size={12} /> {t('Otomatik kayıt')}: {t('PC kütüphanesi')}
         </div>
       )}
 
@@ -268,7 +269,7 @@ export function LibraryPanel() {
                 setContextMenu(null)
               }}
             >
-              ✎ {contextMenu.custom ? t('Düzenle') : t('Kopyalayıp düzenle')}
+              <Icon name="edit" size={13} /> {contextMenu.custom ? t('Düzenle') : t('Kopyalayıp düzenle')}
             </button>
             {contextMenu.custom && (
               <button
@@ -278,7 +279,7 @@ export function LibraryPanel() {
                   setContextMenu(null)
                 }}
               >
-                🗑 {t('Sil')}
+                <Icon name="trash" size={13} /> {t('Sil')}
               </button>
             )}
           </div>

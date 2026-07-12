@@ -3,6 +3,7 @@
 
 import { useStore } from '../state/store'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 export function DrcPanel() {
   const violations = useStore((s) => s.drcViolations)
@@ -30,13 +31,13 @@ export function DrcPanel() {
           )}
         </h3>
         <div>
-          <button onClick={runDrcNow}>↻ {t('Yeniden Çalıştır')}</button>
-          <button onClick={() => openDialog(null)}>✕</button>
+          <button onClick={runDrcNow}><Icon name="refresh" size={13} /> {t('Yeniden Çalıştır')}</button>
+          <button onClick={() => openDialog(null)}><Icon name="close" size={14} /></button>
         </div>
       </div>
       <div className="drc-list">
         {violations && violations.length === 0 && (
-          <div className="drc-clean">✓ {t('Tebrikler — hiçbir kural ihlali bulunamadı!')}</div>
+          <div className="drc-clean"><Icon name="check" size={14} /> {t('Tebrikler — hiçbir kural ihlali bulunamadı!')}</div>
         )}
         {[...errors, ...warnings].map((v) => (
           <button

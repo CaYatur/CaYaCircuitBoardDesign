@@ -9,6 +9,7 @@ import { openProjectFile, validateProject } from '../io/project'
 import { isDesktop } from '../io/native'
 import { usePrompt } from './prompts'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 function timeAgo(at: number, t: (k: string, p?: any) => string): string {
   const s = Math.floor((Date.now() - at) / 1000)
@@ -109,12 +110,12 @@ export function HomeScreen() {
               if (await confirmDiscard()) resetProject()
             }}
           >
-            <span className="home-action-icon">➕</span>
+            <span className="home-action-icon"><Icon name="plus" size={26} /></span>
             <span className="home-action-title">{t('Yeni Proje')}</span>
             <span className="home-action-desc">{t('Boş bir kartla başla')}</span>
           </button>
           <button className="home-action" onClick={openDialog}>
-            <span className="home-action-icon">📂</span>
+            <span className="home-action-icon"><Icon name="folder" size={26} /></span>
             <span className="home-action-title">{t('Proje Aç')}</span>
             <span className="home-action-desc">
               {isDesktop() ? t('Bilgisayardan .cayapcb seç') : t('Dosyadan .cayapcb yükle')}

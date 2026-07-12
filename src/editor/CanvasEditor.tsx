@@ -19,6 +19,8 @@ import { computeZoneFill, type ZoneFillResult } from '../core/zoneFill'
 import { rawCopperItems } from '../io/exportGeometry'
 import { usePrompt } from '../ui/prompts'
 import { NetPopover, suggestNetName } from '../ui/NetPopover'
+import { Icon } from '../ui/Icon'
+import { formatLen, formatLenU, unitSuffix } from '../core/units'
 import { t as tr, useT } from '../i18n'
 
 type DragMode =
@@ -1118,12 +1120,12 @@ function VertexContextMenu({
       />
       <div className="context-menu" style={{ left: menu.x, top: menu.y }}>
         <div className="context-menu-title">{t('Köşe noktası')} #{menu.index + 1}</div>
-        <button onClick={onDelete}>🗑 {t('Noktayı sil')}</button>
+        <button onClick={onDelete}><Icon name="trash" size={13} /> {t('Noktayı sil')}</button>
         {!menu.isEndpoint && (
-          <button onClick={onSplit}>✂ {t('İzi buradan böl')}</button>
+          <button onClick={onSplit}><Icon name="cut" size={13} /> {t('İzi buradan böl')}</button>
         )}
         {menu.isEndpoint && (
-          <button onClick={onConnect}>🔗 {t('En yakın pad/uca bağla')}</button>
+          <button onClick={onConnect}><Icon name="link" size={13} /> {t('En yakın pad/uca bağla')}</button>
         )}
       </div>
     </>
@@ -1140,20 +1142,21 @@ function CursorReadout({
   shortCount: number
 }) {
   const t = useT()
+  const units = useStore((s) => s.project.settings.units ?? 'mm')
   return (
     <div className="cursor-readout">
       {mouseWorld && (
         <span>
-          X: {mouseWorld.x.toFixed(2)} &nbsp; Y: {mouseWorld.y.toFixed(2)} mm
+          X: {formatLen(mouseWorld.x, units)} &nbsp; Y: {formatLen(mouseWorld.y, units)} {unitSuffix(units)}
         </span>
       )}
       <span className={airwireCount > 0 ? 'warn' : 'ok'}>
         {airwireCount > 0
-          ? '⚡ ' + t('{n} eksik bağlantı', { n: airwireCount })
-          : '✓ ' + t('tüm bağlantılar tamam')}
+          ? <><Icon name="net" size={12} /> {t('{n} eksik bağlantı', { n: airwireCount })}</>
+          : <><Icon name="check" size={12} /> {t('tüm bağlantılar tamam')}</>}
       </span>
       {shortCount > 0 && (
-        <span className="err">⛔ {t('{n} kısa devre!', { n: shortCount })}</span>
+        <span className="err"><Icon name="block" size={12} /> {t('{n} kısa devre!', { n: shortCount })}</span>
       )}
     </div>
   )

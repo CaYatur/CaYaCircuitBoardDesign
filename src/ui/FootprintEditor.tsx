@@ -6,7 +6,7 @@
 //   ⬢ 3B Model      — parametrik gövde veya OBJ/STL model + renk
 // Kaydedilenler kullanıcı kütüphanesinde kalıcıdır, .cayalib paylaşılabilir.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useStore } from '../state/store'
 import { useUserLibrary } from '../state/userLibrary'
 import type {
@@ -28,6 +28,7 @@ import { render3D, fit3DCamera, type Camera } from '../render/render3d'
 import { loadFootprintMeshFromFile, pickModelFile } from '../io/model3d'
 import { usePrompt } from './prompts'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 const emptyPad = (n: number): PadDef => ({
   name: `${n}`,
@@ -134,6 +135,21 @@ export function FootprintEditor() {
   const [model3d, setModel3d] = useState<FootprintModel3D | null>(null)
   // Aktif tasarım sekmesi
   const [tab, setTab] = useState<'pcb' | 'symbol' | 'model3d'>('pcb')
+
+  // Tam ekran (büyütülmüş) düzen — çizim alanı ekranı kaplasın (daha kolay
+  // düzenleme). Açıkken modal genişler ve tuval boyutu viewport'a göre büyür.
+  const [maximized, setMaximized] = useState(false)
+  const [vp, setVp] = useState({ w: window.innerWidth, h: window.innerHeight })
+  useEffect(() => {
+    if (!maximized) return
+    const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [maximized])
+  // Tuval piksel boyutu: normalde 500×400; tam ekranda viewport'a sığdırılır.
+  const fpCanvasW = maximized ? Math.max(500, Math.round(vp.w * 0.96) - 470) : 500
+  const fpCanvasH = maximized ? Math.max(400, Math.round(vp.h * 0.94) - 190) : 400
 
   // Hızlı üreteç durumu
   const [genRows, setGenRows] = useState(1)
@@ -383,18 +399,30 @@ export function FootprintEditor() {
 
   return (
     <div className="modal-backdrop" onMouseDown={() => openDialog(null)}>
-      <div className="modal footprint-modal" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className={'modal footprint-modal' + (maximized ? ' is-full' : '')}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <h3>
-            ⬡ {t('Footprint Editörü')}{' '}
+            <Icon name="chip" size={16} /> {t('Footprint Editörü')}{' '}
             {editingId ? (
               <small>({t('düzenleniyor')}: {name || t('İsimsiz')})</small>
             ) : (
               <small>({t('yeni')})</small>
             )}
-            {savedFlash && <span className="saved-flash">✓ {t('Kaydedildi')}</span>}
+            {savedFlash && <span className="saved-flash"><Icon name="check" size={13} /> {t('Kaydedildi')}</span>}
           </h3>
-          <button onClick={() => openDialog(null)}>✕</button>
+          <div className="modal-header-actions">
+            <button
+              className={maximized ? 'active' : ''}
+              title={maximized ? t('Pencereyi küçült') : t('Tam ekran (çizim alanını büyüt)')}
+              onClick={() => setMaximized((v) => !v)}
+            >
+              <Icon name={maximized ? 'fullscreenExit' : 'fullscreen'} size={15} />
+            </button>
+            <button onClick={() => openDialog(null)}><Icon name="close" size={14} /></button>
+          </div>
         </div>
 
         {sourceNote && <div className="source-note">ℹ {sourceNote}</div>}
@@ -436,8 +464,8 @@ export function FootprintEditor() {
                       if (n) { addCategory(n); setCategory(n) }
                       setAddingCat(false); setNewCatName('')
                     }}
-                  >✓</button>
-                  <button type="button" onClick={() => { setAddingCat(false); setNewCatName('') }}>✕</button>
+                  ><Icon name="check" size={13} /></button>
+                  <button type="button" onClick={() => { setAddingCat(false); setNewCatName('') }}><Icon name="close" size={13} /></button>
                 </div>
               ) : (
                 <div className="field-row" style={{ gap: 4 }}>
@@ -454,14 +482,14 @@ export function FootprintEditor() {
                     className="btn-secondary"
                     title={t('Yeni kategori oluştur')}
                     onClick={() => setAddingCat(true)}
-                  >＋</button>
+                  ><Icon name="plus" size={13} /></button>
                   <button
                     type="button"
                     className="btn-secondary btn-danger-outline"
                     title={t('Bu kategoriyi sil (içindekiler Genel\'e taşınır)')}
                     disabled={category === 'Genel'}
                     onClick={() => askDeleteCategory(category)}
-                  >🗑</button>
+                  ><Icon name="trash" size={13} /></button>
                 </div>
               )}
             </div>
@@ -485,15 +513,15 @@ export function FootprintEditor() {
             </div>
 
             <div className="generator-box">
-              <h4>⚡ {t('Hızlı pad üreteci')}</h4>
+              <h4><Icon name="net" size={13} /> {t('Hızlı pad üreteci')}</h4>
               <div className="field-row">
                 <div className="field">
                   <label>{t('Sıra')}</label>
-                  <input type="number" min={1} max={4} value={genRows} onChange={(e) => setGenRows(parseInt(e.target.value) || 1)} />
+                  <input type="number" min={1} max={4} value={genRows} onChange={(e) => setGenRows(Math.min(4, Math.max(1, parseInt(e.target.value) || 1)))} />
                 </div>
                 <div className="field">
                   <label>{t('Sütun')}</label>
-                  <input type="number" min={1} max={40} value={genCols} onChange={(e) => setGenCols(parseInt(e.target.value) || 1)} />
+                  <input type="number" min={1} max={40} value={genCols} onChange={(e) => setGenCols(Math.min(40, Math.max(1, parseInt(e.target.value) || 1)))} />
                 </div>
                 <div className="field">
                   <label>{t('Pitch')}</label>
@@ -552,21 +580,21 @@ export function FootprintEditor() {
                     className="pad-remove"
                     onClick={() => setPads((ps) => ps.filter((_, j) => j !== i))}
                   >
-                    ✕
+                    <Icon name="close" size={12} />
                   </button>
                 </div>
               ))}
             </div>
             <button onClick={() => setPads((ps) => [...ps, emptyPad(ps.length + 1)])}>
-              ＋ {t('Pad Ekle')}
+              <Icon name="plus" size={13} /> {t('Pad Ekle')}
             </button>
 
             <div className="modal-buttons">
               <button className="btn-secondary" onClick={resetForm} title={t('Yeni boş footprint\'e geç')}>
-                ＋ {t('Yeni (boş)')}
+                <Icon name="plus" size={13} /> {t('Yeni (boş)')}
               </button>
               <button className="btn-primary" onClick={save}>
-                {editingId ? '💾 ' + t('Güncelle') : '💾 ' + t('Kütüphaneye Kaydet')}
+                <Icon name="save" size={14} /> {editingId ? t('Güncelle') : t('Kütüphaneye Kaydet')}
               </button>
             </div>
             <p className="calc-note">
@@ -577,13 +605,13 @@ export function FootprintEditor() {
           <div className="footprint-side">
             <div className="fp-tabs">
               <button className={tab === 'pcb' ? 'active' : ''} onClick={() => setTab('pcb')}>
-                ⬡ {t('Kılıf (PCB)')}
+                <Icon name="chip" size={14} /> {t('Kılıf (PCB)')}
               </button>
               <button className={tab === 'symbol' ? 'active' : ''} onClick={() => setTab('symbol')}>
-                ⌁ {t('Şema Sembolü')} {symbolDef ? '●' : ''}
+                <Icon name="schematic" size={14} /> {t('Şema Sembolü')} {symbolDef ? '●' : ''}
               </button>
               <button className={tab === 'model3d' ? 'active' : ''} onClick={() => setTab('model3d')}>
-                ⬢ {t('3B Model')} {model3d ? '●' : ''}
+                <Icon name="cube" size={14} /> {t('3B Model')} {model3d ? '●' : ''}
               </button>
             </div>
 
@@ -597,6 +625,8 @@ export function FootprintEditor() {
                 setSilk={setSilk}
                 bodyOutline={bodyOutline}
                 setBodyOutline={setBodyOutline}
+                canvasW={fpCanvasW}
+                canvasH={fpCanvasH}
               />
             )}
             {tab === 'symbol' && (
@@ -666,8 +696,8 @@ export function FootprintEditor() {
                                 <option key={c} value={c}>{t(c)}</option>
                               ))}
                             </select>
-                            <button onClick={() => loadFootprint(fp, false)} title={t('Düzenle')}>✎</button>
-                            <button onClick={() => removeFootprint(fp.id)} title={t('Sil')}>🗑</button>
+                            <button onClick={() => loadFootprint(fp, false)} title={t('Düzenle')}><Icon name="edit" size={12} /></button>
+                            <button onClick={() => removeFootprint(fp.id)} title={t('Sil')}><Icon name="trash" size={12} /></button>
                           </span>
                         </div>
                       ))}
@@ -686,13 +716,22 @@ export function FootprintEditor() {
  *  merkezine doğru (silk pin gösterimiyle birebir aynı: etiketi sürükleyerek
  *  silk pin konumu ayarlanır). Merkez footprint origini (0,0) varsayılır. */
 function defaultLabelPos(pad: PadDef): Point {
-  const pl = pinLabelPlacement({ ...pad, nameDx: undefined, nameDy: undefined }, 0, 0)
+  const copperPad = {
+    ...pad,
+    x: pad.x + (pad.holeDx ?? 0),
+    y: pad.y + (pad.holeDy ?? 0),
+    nameDx: undefined,
+    nameDy: undefined
+  }
+  const pl = pinLabelPlacement(copperPad, 0, 0)
   return { x: pl.x, y: pl.y }
 }
 /** Pad adı etiketinin geçerli (yerel) konumu — kayma uygulanmış */
 function labelPos(pad: PadDef): Point {
   const d = defaultLabelPos(pad)
-  return { x: (pad.x) + (pad.nameDx ?? (d.x - pad.x)), y: pad.y + (pad.nameDy ?? (d.y - pad.y)) }
+  const copperX = pad.x + (pad.holeDx ?? 0)
+  const copperY = pad.y + (pad.holeDy ?? 0)
+  return { x: copperX + (pad.nameDx ?? (d.x - copperX)), y: copperY + (pad.nameDy ?? (d.y - copperY)) }
 }
 
 type FpTool = 'move' | 'pad' | 'outline' | 'line' | 'circle' | 'arc' | 'text' | 'delete'
@@ -710,7 +749,9 @@ function FpCanvas({
   silk,
   setSilk,
   bodyOutline,
-  setBodyOutline
+  setBodyOutline,
+  canvasW = 500,
+  canvasH = 400
 }: {
   pads: PadDef[]
   setPads: (updater: (ps: PadDef[]) => PadDef[]) => void
@@ -720,12 +761,15 @@ function FpCanvas({
   setSilk: (updater: (s: SilkElement[]) => SilkElement[]) => void
   bodyOutline: Point[] | null
   setBodyOutline: (o: Point[] | null) => void
+  /** Tuval boyutu (px) — tam ekran modunda büyütülür */
+  canvasW?: number
+  canvasH?: number
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const t = useT()
   const ask = usePrompt((s) => s.ask)
-  const W = 500
-  const H = 400
+  const W = canvasW
+  const H = canvasH
   const GRID = 0.635
   const [tool, setTool] = useState<FpTool>('move')
   const [snap, setSnap] = useState(true)
@@ -783,7 +827,9 @@ function FpCanvas({
       maxY = Math.max(maxY, Math.abs(y))
     }
     for (const p of pads) {
-      consider(Math.abs(p.x) + p.width / 2, Math.abs(p.y) + p.height / 2)
+      const copperX = p.x + (p.holeDx ?? 0)
+      const copperY = p.y + (p.holeDy ?? 0)
+      consider(Math.abs(copperX) + p.width / 2, Math.abs(copperY) + p.height / 2)
       const lp = labelPos(p)
       consider(lp.x, lp.y)
     }
@@ -976,16 +1022,18 @@ function FpCanvas({
 
     // Pad'ler
     for (const pad of pads) {
+      const px = pad.x + (pad.holeDx ?? 0)
+      const py = pad.y + (pad.holeDy ?? 0)
       ctx.fillStyle =
         pad.layer === 'both' ? '#d4af37' : pad.layer === 'top' ? '#d94f3d' : '#4a7fdb'
       if (pad.shape === 'circle') {
         ctx.beginPath()
-        ctx.arc(pad.x, pad.y, Math.max(pad.width, pad.height) / 2, 0, Math.PI * 2)
+        ctx.arc(px, py, Math.max(pad.width, pad.height) / 2, 0, Math.PI * 2)
         ctx.fill()
       } else if (pad.shape === 'oval') {
         const r = Math.min(pad.width, pad.height) / 2
-        const x = pad.x - pad.width / 2
-        const y = pad.y - pad.height / 2
+        const x = px - pad.width / 2
+        const y = py - pad.height / 2
         ctx.beginPath()
         ctx.moveTo(x + r, y)
         ctx.arcTo(x + pad.width, y, x + pad.width, y + pad.height, r)
@@ -995,9 +1043,11 @@ function FpCanvas({
         ctx.closePath()
         ctx.fill()
       } else {
-        ctx.fillRect(pad.x - pad.width / 2, pad.y - pad.height / 2, pad.width, pad.height)
+        ctx.fillRect(px - pad.width / 2, py - pad.height / 2, pad.width, pad.height)
       }
       if (pad.layer === 'both' && pad.drill) {
+        // Siyah delik pad'in ana X/Y konumunda sabittir; sarı pad yukarıda
+        // holeDx/holeDy ile ayrı çizilir.
         ctx.fillStyle = '#0e1116'
         ctx.beginPath()
         ctx.arc(pad.x, pad.y, pad.drill / 2, 0, Math.PI * 2)
@@ -1005,12 +1055,12 @@ function FpCanvas({
       }
       // Pad adı — pad yanında (silk pin gösterimiyle aynı yerleşim); elle
       // taşınmışsa bağlantı çizgisiyle
-      const place = pinLabelPlacement(pad, 0, 0)
+      const place = pinLabelPlacement({ ...pad, x: px, y: py }, 0, 0)
       const moved = pad.nameDx !== undefined || pad.nameDy !== undefined
-      if (moved && Math.hypot(place.x - pad.x, place.y - pad.y) > Math.max(pad.width, pad.height) / 2 + 0.3) {
+      if (moved && Math.hypot(place.x - px, place.y - py) > Math.max(pad.width, pad.height) / 2 + 0.3) {
         ctx.strokeStyle = 'rgba(255,255,255,0.35)'
         ctx.lineWidth = 0.05
-        ctx.beginPath(); ctx.moveTo(pad.x, pad.y); ctx.lineTo(place.x, place.y); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(place.x, place.y); ctx.stroke()
       }
       const lp = place
       ctx.fillStyle = '#fff'
@@ -1152,7 +1202,9 @@ function FpCanvas({
         for (let i = pads.length - 1; i >= 0; i--) {
           const pad = pads[i]
           const r = Math.max(pad.width, pad.height) / 2 + 0.3
-          if (Math.hypot(loc.x - pad.x, loc.y - pad.y) <= r) {
+          const copperX = pad.x + (pad.holeDx ?? 0)
+          const copperY = pad.y + (pad.holeDy ?? 0)
+          if (Math.hypot(loc.x - copperX, loc.y - copperY) <= r) {
             setPads((ps) => ps.filter((_, j) => j !== i))
             return
           }
@@ -1188,7 +1240,9 @@ function FpCanvas({
         for (let i = pads.length - 1; i >= 0; i--) {
           const pad = pads[i]
           const r = Math.max(pad.width, pad.height) / 2 + 0.3
-          if (Math.abs(loc.x - pad.x) <= r && Math.abs(loc.y - pad.y) <= r) {
+          const copperX = pad.x + (pad.holeDx ?? 0)
+          const copperY = pad.y + (pad.holeDy ?? 0)
+          if (Math.abs(loc.x - copperX) <= r && Math.abs(loc.y - copperY) <= r) {
             setSel({ kind: 'pad', index: i })
             dragRef.current = { kind: 'pad', index: i }
             return
@@ -1293,7 +1347,7 @@ function FpCanvas({
     }
   }
 
-  const toolBtn = (id: FpTool, icon: string, label: string, title: string) => (
+  const toolBtn = (id: FpTool, icon: ReactNode, label: string, title: string) => (
     <button
       type="button"
       className={tool === id ? 'active' : ''}
@@ -1313,24 +1367,24 @@ function FpCanvas({
   return (
     <div>
       <div className="fp-canvas-tools">
-        {toolBtn('move', '✥', t('Taşı'), t('Pad, etiket, silk ve köşeleri taşı — boşlukta sürükle: kaydır'))}
-        {toolBtn('pad', '◉', t('Pad'), t('Tıklayarak pad ekle'))}
+        {toolBtn('move', <Icon name="move" size={14} />, t('Taşı'), t('Pad, etiket, silk ve köşeleri taşı — boşlukta sürükle: kaydır'))}
+        {toolBtn('pad', <Icon name="via" size={14} />, t('Pad'), t('Tıklayarak pad ekle'))}
         {toolBtn('line', '╱', t('Çizgi'), t('Silkscreen çizgi çiz (sürükle)'))}
         {toolBtn('circle', '◯', t('Daire'), t('Silkscreen daire çiz (merkezden sürükle)'))}
         {toolBtn('arc', '◜', t('Yay'), t('Yay çiz — merkeze tıkla, yarıçap için tıkla, bitiş açısı için tıkla'))}
-        {toolBtn('text', 'A', t('Yazı'), t('Silkscreen yazı ekle'))}
-        {toolBtn('outline', '✎', t('Dış hat'), t('Gövde dış hattını köşe köşe çiz — çift tık ile bitir'))}
-        {toolBtn('delete', '✕', t('Sil'), t('Pad / silk öğesi / köşe sil'))}
+        {toolBtn('text', <Icon name="text" size={14} />, t('Yazı'), t('Silkscreen yazı ekle'))}
+        {toolBtn('outline', <Icon name="pen" size={14} />, t('Dış hat'), t('Gövde dış hattını köşe köşe çiz — çift tık ile bitir'))}
+        {toolBtn('delete', <Icon name="trash" size={14} />, t('Sil'), t('Pad / silk öğesi / köşe sil'))}
         {tool === 'outline' && (
           <button type="button" onClick={finishOutline} disabled={!draft || draft.length < 3}>
-            ✓ {t('Bitir')}
+            <Icon name="check" size={13} /> {t('Bitir')}
           </button>
         )}
       </div>
       <div className="fp-canvas-tools">
         {bodyOutline && (
           <button type="button" className="btn-danger-outline" onClick={() => setBodyOutline(null)} title={t('Dikdörtgen gövdeye dön')}>
-            🗑 {t('Dış hattı sil')}
+            <Icon name="trash" size={13} /> {t('Dış hattı sil')}
           </button>
         )}
         <button
@@ -1349,7 +1403,7 @@ function FpCanvas({
           ▭ {t('Çerçeve')}
         </button>
         <button type="button" onClick={() => setZoomState(null)} title={t('İçeriğe sığdır')}>
-          ⛶ {t('Sığdır')}
+          <Icon name="fullscreen" size={13} /> {t('Sığdır')}
         </button>
         <label className="fp-snap-toggle" title={t('Izgaraya yasla (Shift: serbest)')}>
           <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> {t('Izgara')}
@@ -1382,6 +1436,12 @@ function FpCanvas({
           const p = pads[sel.index]
           const up = (patch: Partial<PadDef>) =>
             setPads((ps) => ps.map((q, j) => (j === sel.index ? { ...q, ...patch } : q)))
+          // Delik kayması sınırı: delik pad bakırının içinde kalmalı (en az
+          // ince bir halka bırakarak) — kenar dışına taşma/kısa devre önlenir.
+          const hasDrill = p.layer === 'both' && !!p.drill
+          const maxHoleDx = Math.max(0, (p.width - (p.drill ?? 0)) / 2)
+          const maxHoleDy = Math.max(0, (p.height - (p.drill ?? 0)) / 2)
+          const clamp = (v: number, m: number) => Math.max(-m, Math.min(m, v))
           return (
             <div className="fp-props">
               <b>◉ {t('Pad')} {p.name}</b>
@@ -1389,6 +1449,16 @@ function FpCanvas({
               <label>Y<input type="number" step={0.127} value={p.y} onChange={(e) => up({ y: parseFloat(e.target.value) || 0 })} /></label>
               <label>G<input type="number" step={0.1} value={p.width} onChange={(e) => up({ width: parseFloat(e.target.value) || 0.5 })} /></label>
               <label>Y<input type="number" step={0.1} value={p.height} onChange={(e) => up({ height: parseFloat(e.target.value) || 0.5 })} /></label>
+              {hasDrill && (
+                <>
+                  <span className="fp-props-sep" title={t('Sarı pad halkası konumu — siyah delik pad X/Y merkezinde sabittir')}>{t('Halka')}:</span>
+                  <label title={t('Sarı pad halkasının X kayması (pad içinde)')}>◎X<input type="number" step={0.05} value={+(p.holeDx ?? 0).toFixed(3)} onChange={(e) => up({ holeDx: clamp(parseFloat(e.target.value) || 0, maxHoleDx) })} /></label>
+                  <label title={t('Sarı pad halkasının Y kayması (pad içinde)')}>◎Y<input type="number" step={0.05} value={+(p.holeDy ?? 0).toFixed(3)} onChange={(e) => up({ holeDy: clamp(parseFloat(e.target.value) || 0, maxHoleDy) })} /></label>
+                  {(p.holeDx || p.holeDy) ? (
+                    <button type="button" className="fp-hole-reset" title={t('Sarı halkayı pad merkezine getir')} onClick={() => up({ holeDx: undefined, holeDy: undefined })}><Icon name="close" size={11} /></button>
+                  ) : null}
+                </>
+              )}
             </div>
           )
         }
@@ -1979,7 +2049,7 @@ function SymbolCanvas({
     }
   }
 
-  const symToolBtn = (id: SymTool, icon: string, label: string, title: string) => (
+  const symToolBtn = (id: SymTool, icon: ReactNode, label: string, title: string) => (
     <button
       type="button"
       className={tool === id ? 'active' : ''}
@@ -1996,17 +2066,17 @@ function SymbolCanvas({
       <div className="fp-canvas-tools">
         {!symbolDef ? (
           <button type="button" className="btn-primary" onClick={customize}>
-            ✎ {t('Özelleştir')}
+            <Icon name="edit" size={13} /> {t('Özelleştir')}
           </button>
         ) : (
           <>
-            {symToolBtn('move', '✥', t('Taşı'), t('Pin ve çizimleri taşı · pine çift tık: yön değiştir'))}
+            {symToolBtn('move', <Icon name="move" size={14} />, t('Taşı'), t('Pin ve çizimleri taşı · pine çift tık: yön değiştir'))}
             {symToolBtn('line', '╱', t('Çizgi'), t('Çizgi çiz (sürükle)'))}
             {symToolBtn('rect', '▭', t('Kutu'), t('Dikdörtgen çiz (sürükle)'))}
             {symToolBtn('circle', '◯', t('Daire'), t('Daire çiz (merkezden sürükle)'))}
             {symToolBtn('arc', '◜', t('Yay'), t('Yay çiz — merkeze tıkla, yarıçap için tıkla, bitiş açısı için tıkla'))}
-            {symToolBtn('text', 'A', t('Yazı'), t('Yazı ekle'))}
-            {symToolBtn('delete', '✕', t('Sil'), t('Çizim öğesi sil'))}
+            {symToolBtn('text', <Icon name="text" size={14} />, t('Yazı'), t('Yazı ekle'))}
+            {symToolBtn('delete', <Icon name="trash" size={14} />, t('Sil'), t('Çizim öğesi sil'))}
             <button
               type="button"
               className="btn-danger-outline"
@@ -2284,7 +2354,7 @@ function Model3DTab({
       {kind === 'mesh' && model3d && (
         <div className="fp-canvas-tools">
           <button type="button" disabled={busy} onClick={importMesh}>
-            📂 {model3d.name ? `${model3d.name}` : t('Model seç')}
+            <Icon name="folder" size={13} /> {model3d.name ? `${model3d.name}` : t('Model seç')}
           </button>
           <label className="fp-3d-field">
             {t('Ölçek')}
@@ -2344,7 +2414,7 @@ function Model3DTab({
               })
             }}
           >
-            ✚ {t('Model Üstüne Yazı Ekle')}
+            <Icon name="plus" size={13} /> {t('Model Üstüne Yazı Ekle')}
           </button>
         </div>
         {(model3d?.labels ?? []).map((lbl, i) => {
@@ -2373,7 +2443,7 @@ function Model3DTab({
               <label className="fp-3d-field">{t('Boyut')}<input type="number" step={0.1} min={0.2} value={lbl.size ?? 1} onChange={(e) => upLbl({ size: Math.max(0.2, parseFloat(e.target.value) || 1) })} /></label>
               <label className="fp-3d-field">{t('Dönüş')}<input type="number" step={15} value={lbl.rotZ ?? 0} onChange={(e) => upLbl({ rotZ: parseFloat(e.target.value) || 0 })} />°</label>
               <input type="color" value={lbl.color ?? '#ffffff'} onChange={(e) => upLbl({ color: e.target.value })} />
-              <button type="button" className="btn-danger-outline" onClick={removeLbl} title={t('Yazıyı sil')}>✕</button>
+              <button type="button" className="btn-danger-outline" onClick={removeLbl} title={t('Yazıyı sil')}><Icon name="close" size={12} /></button>
             </div>
           )
         })}

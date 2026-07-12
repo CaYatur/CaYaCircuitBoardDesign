@@ -6,12 +6,15 @@
 import { useStore } from '../state/store'
 import { FONT_STYLES } from '../types'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
+import { formatLen, unitSuffix } from '../core/units'
 
 const TRACE_PRESETS = [0.25, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.5, 2.0]
 
 export function ToolSettingsBar() {
   const tool = useStore((s) => s.tool)
   const project = useStore((s) => s.project)
+  const units = project.settings.units ?? 'mm'
   const mutateLive = useStore((s) => s.mutateLive)
   const activeLayer = useStore((s) => s.activeLayer)
   const setActiveLayer = useStore((s) => s.setActiveLayer)
@@ -202,13 +205,13 @@ export function ToolSettingsBar() {
           {lastMeasure ? (
             <>
               <span className="tsb-label">
-                Δx = {(lastMeasure.b.x - lastMeasure.a.x).toFixed(2)} mm, Δy ={' '}
-                {(lastMeasure.b.y - lastMeasure.a.y).toFixed(2)} mm (
-                {Math.hypot(
+                Δx = {formatLen(lastMeasure.b.x - lastMeasure.a.x, units)} {unitSuffix(units)}, Δy ={' '}
+                {formatLen(lastMeasure.b.y - lastMeasure.a.y, units)} {unitSuffix(units)} (
+                {formatLen(Math.hypot(
                   lastMeasure.b.x - lastMeasure.a.x,
                   lastMeasure.b.y - lastMeasure.a.y
-                ).toFixed(2)}{' '}
-                mm)
+                ), units)}{' '}
+                {unitSuffix(units)})
               </span>
               <button
                 className="tsb-action"
@@ -221,13 +224,13 @@ export function ToolSettingsBar() {
                   )
                 }
               >
-                ➦ {t('Seçimi bu vektörle taşı')} {selCount > 0 && `(${selCount})`}
+                <Icon name="move" size={13} /> {t('Seçimi bu vektörle taşı')} {selCount > 0 && `(${selCount})`}
               </button>
               <button
                 className="tsb-action"
                 onClick={() => useStore.setState({ lastMeasure: null })}
               >
-                ✕ {t('Temizle')}
+                <Icon name="close" size={13} /> {t('Temizle')}
               </button>
             </>
           ) : (
@@ -274,7 +277,7 @@ export function ToolSettingsBar() {
             </button>
           )}
           <button className="tsb-action danger" onClick={deleteSelection} title="Del">
-            🗑 {t('Sil')}
+            <Icon name="trash" size={13} /> {t('Sil')}
           </button>
         </>
       )}

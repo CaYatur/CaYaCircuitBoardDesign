@@ -5,6 +5,7 @@ import { useStore } from '../state/store'
 import type { Project } from '../types'
 import { DEFAULT_PCB_COLOR, PCB_COLORS } from '../types'
 import { useT } from '../i18n'
+import { Icon } from './Icon'
 
 const formFromProject = (project: Project) => ({
   name: project.name,
@@ -130,8 +131,8 @@ export function BoardSettingsDialog() {
     <div className="modal-backdrop" onMouseDown={() => openDialog(null)}>
       <div className="modal board-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>⚙ {t('Kart Ayarları & Tasarım Kuralları')}</h3>
-          <button onClick={() => openDialog(null)}>✕</button>
+          <h3><Icon name="board" size={16} /> {t('Kart Ayarları & Tasarım Kuralları')}</h3>
+          <button onClick={() => openDialog(null)}><Icon name="close" size={14} /></button>
         </div>
         <div className="board-settings-grid">
           <div>
@@ -181,7 +182,7 @@ export function BoardSettingsDialog() {
               }}
               title={t('Kartı tuval üzerinde köşe köşe çizin — çift tık/Enter ile bitirin')}
             >
-              ✎ {t('Kartı Çiz (serbest)')}
+              <Icon name="edit" size={14} /> {t('Kartı Çiz (serbest)')}
             </button>
             <div className="field">
               <label>{t('PCB rengi (lehim maskesi)')}</label>
@@ -251,7 +252,7 @@ export function BoardSettingsDialog() {
             <F label={t('Via deliği')} k="defaultViaDrill" />
             <F label={t('Yazı boyutu')} k="defaultTextSize" step={0.25} />
             <p className="calc-note">
-              {t('İpucu: yüksek akım hatları için gereken genişliği Hesaplayıcılar\'dan (🧮) bulabilirsiniz.')}
+              {t('İpucu: yüksek akım hatları için gereken genişliği Hesaplayıcılar\'dan bulabilirsiniz.')}
             </p>
           </div>
         </div>
