@@ -2628,6 +2628,11 @@ select option {
   z-index: 400;
 }
 
+/* Footprint editörü kapatma onayı: editör penceresinin (z-index 100) üstünde olmalı */
+.fp-close-confirm-backdrop {
+  z-index: 500;
+}
+
 /* ─── Footprint editörü: seçili öğe özellik çubuğu ─── */
 .fp-props {
   display: flex;

@@ -92,6 +92,7 @@ const en: Record<string, string> = {
   'Gövde dış hattını köşe köşe çiz — çift tık ile bitir': 'Draw the body outline vertex by vertex — double-click to finish',
   'Dikdörtgen gövdeye dön': 'Back to rectangular body',
   'Izgaraya yasla (Shift: serbest)': 'Snap to grid (Shift: free)',
+  'Izgaraya Yasla': 'Snap to Grid',
   'Köşe eklemek için tıklayın · çift tık/Bitir ile kapatın': 'Click to add a vertex · double-click/Finish to close',
   'Pad\'i veya adını sürükleyerek taşıyın (adlar çizgilere binmesin)': 'Drag a pad or its name to move it (so names don\'t overlap lines)',
   'aktif': 'active',
@@ -379,6 +380,9 @@ const en: Record<string, string> = {
   'Bakır Alan': 'Copper Zone',
   'Boşluk (mm)': 'Clearance (mm)',
   'Genişlik (mm)': 'Width (mm)',
+  'Yükseklik (mm)': 'Height (mm)',
+  'Kağıt Boyutu': 'Paper Size',
+  'Otomatik (İçeriğe Sığdır)': 'Automatic (Fit to Content)',
   'İpucu: köşe noktalarını canvas üzerinde sürükleyerek düzenleyebilirsiniz':
     'Tip: drag the vertex handles on the canvas to edit the path',
   'Otomatik analiz': 'Automatic analysis',
@@ -1065,6 +1069,11 @@ const en: Record<string, string> = {
   'Mevcut projedeki ("{name}") kaydedilmemiş değişiklikler devam ederseniz KAYBOLUR. Kaydetmek için önce "Editöre geç" ile dönüp Kaydet\'e basın.':
     'Unsaved changes in the current project ("{name}") will be LOST if you continue. To save, go back with "Go to editor" and press Save first.',
   'Devam (kaydetme)': 'Continue (discard)',
+  'Kapat': 'Close',
+  'Bu footprint\'te kaydedilmemiş değişiklikler var. Kapatmadan önce kaydetmek ister misiniz?':
+    'This footprint has unsaved changes. Do you want to save before closing?',
+  'Kaydetmeden Kapat': 'Close Without Saving',
+  'Kaydet ve Kapat': 'Save and Close',
 
   // ── Yeni: footprint editörü seçim/özellik ──
   'Kalınlık': 'Width',
